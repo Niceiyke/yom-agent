@@ -186,11 +186,17 @@ class StandaloneRuntime(AgentRuntime):
         super().__init__(deps, settings)
         self._provider = None
         self._hooks = deps.hooks if deps else None
+        self._context_manager = deps.context_manager if deps else None
 
     @property
     def hooks(self):
         """Get the hooks registry."""
         return self._hooks
+
+    @property
+    def context_manager(self):
+        """Get the context manager."""
+        return self._context_manager
 
     def _get_provider(self):
         """Get or create LLM provider."""
@@ -228,11 +234,20 @@ class StandaloneRuntime(AgentRuntime):
         if self._hooks:
             await self._hooks.emit("before_turn", state=state, iteration=iteration)
 
+        messages_for_loop = state.messages
+        if self._context_manager is not None:
+            max_tokens = self._settings.max_context_tokens
+            if max_tokens is not None:
+                message_dicts = [m.to_dict() for m in messages_for_loop]
+                truncated_dicts = self._context_manager.truncate_messages(message_dicts, max_tokens)
+                if len(truncated_dicts) < len(message_dicts):
+                    from yom.models.messages import Message
+                    messages_for_loop = [Message.from_dict(m) for m in truncated_dicts]
+
         provider = self._get_provider()
         model = self._settings.default_model or DEFAULT_MODEL
         config = self._get_completion_config()
 
-        # Import here to avoid circular
         from yom.loop import AgentLoop
 
         loop = AgentLoop(provider=provider, tools=self._tools)
@@ -241,7 +256,7 @@ class StandaloneRuntime(AgentRuntime):
 
         try:
             response_content, tool_calls, tool_count = await loop.run_turn(
-                messages=state.messages,
+                messages=messages_for_loop,
                 model=model,
                 config=config,
             )

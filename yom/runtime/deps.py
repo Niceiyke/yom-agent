@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from yom.tools import Tool
     from yom.models import AgentState
     from yom.session import SessionBackend
+    from yom.context import ContextManager
 
 
 StreamFn = Callable[..., object]
@@ -20,6 +21,7 @@ class RuntimeDeps:
     tool_registry: ToolRegistry | None = None
     subagents: SubAgentManager = field(default_factory=lambda: __import__("yom.subagent.core", fromlist=["SubAgentManager"]).SubAgentManager())
     llm_stream: StreamFn | None = None
+    context_manager: ContextManager | None = None
 
 
 class SessionManager:

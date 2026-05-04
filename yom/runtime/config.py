@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from yom.session.backends import SessionBackend
     from yom.tools import Tool
     from yom.tools.protocol import EventHook
+    from yom.context import ContextConfig
 
 
 @dataclass
@@ -72,6 +73,10 @@ class RuntimeSettings:
     log_level: str = "INFO"
     trace_enabled: bool = False
 
+    # === Context Management ===
+    max_context_tokens: int | None = None
+    context_config: ContextConfig | None = None
+
     # === Execution ===
     timeout: float = 120.0
     max_retries: int = 3
@@ -105,3 +110,6 @@ class RuntimeSettings:
         for tool in self.tools:
             if not hasattr(tool, "name") and not callable(tool):
                 raise ValueError(f"Invalid tool: {tool}")
+
+        if self.max_context_tokens is not None and self.max_context_tokens <= 0:
+            raise ValueError("max_context_tokens must be positive")

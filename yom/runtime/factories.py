@@ -13,6 +13,7 @@ from yom.runtime.config import RuntimeSettings
 from yom.runtime.deps import RuntimeDeps
 from yom.runtime.runtime import AgentRuntime, StandaloneRuntime
 from yom.session import FileSessionBackend, InMemorySessionBackend
+from yom.context import ContextConfig, ContextManager, create_token_counter
 
 
 def build_runtime(
@@ -84,9 +85,18 @@ def _build_default_deps(settings: RuntimeSettings) -> RuntimeDeps:
     if session_backend is None:
         session_backend = FileSessionBackend()
 
+    context_manager = None
+    if settings.max_context_tokens is not None or settings.context_config is not None:
+        from yom.context import ContextConfig, ContextManager
+        config = settings.context_config or ContextConfig()
+        if settings.max_context_tokens is not None:
+            config.max_tokens = settings.max_context_tokens
+        context_manager = ContextManager(config)
+
     return RuntimeDeps(
         session_backend=session_backend,
         tool_registry=None,
+        context_manager=context_manager,
     )
 
 

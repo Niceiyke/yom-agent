@@ -17,6 +17,15 @@ from yom.models import AgentState, Message, RuntimeRunResult
 from yom.session import SessionBackend, FileSessionBackend, InMemorySessionBackend
 from yom.hooks import HookRegistry, HookResult, block, allow, global_hooks, HOOK_NAMES
 from yom.skills import Skill, LoadedSkills, load_skills, format_skills_for_prompt
+from yom.context import (
+    ContextConfig,
+    ContextManager,
+    ContextStats,
+    TruncationStrategy,
+    TokenCounter,
+    create_token_counter,
+    estimate_tokens,
+)
 from yom.providers import (
     LLMResponse,
     CompletionConfig,
@@ -74,6 +83,14 @@ __all__ = [
     "LoadedSkills",
     "load_skills",
     "format_skills_for_prompt",
+    # Context
+    "ContextConfig",
+    "ContextManager",
+    "ContextStats",
+    "TruncationStrategy",
+    "TokenCounter",
+    "create_token_counter",
+    "estimate_tokens",
     # Providers
     "LLMResponse",
     "CompletionConfig",
