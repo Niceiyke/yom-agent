@@ -170,7 +170,12 @@ class AgentRuntime:
 
     async def shutdown(self) -> None:
         """Clean up runtime resources."""
-        pass
+        logger.info(f"Runtime {self._settings.runtime_id} shutting down")
+        if hasattr(self, "_provider") and self._provider is not None:
+            if hasattr(self._provider, "_client"):
+                self._provider._client = None
+        self._provider = None
+        self._runtime = None
 
 
 class StandaloneRuntime(AgentRuntime):
