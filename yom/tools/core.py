@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import glob as glob_module
+import re
 import shlex
 from pathlib import Path
+from typing import Any
 
 from yom.tools import tool
 
@@ -132,8 +135,126 @@ async def cmd(command: str, timeout: int = 30) -> str:
         return f"Error executing command: {e}"
 
 
-CORE_TOOLS = [read_file, write_file, edit_file, bash, cmd]
-CORE_TOOL_NAMES = {"read", "write", "edit", "bash", "cmd"}
+@tool(
+    name="grep",
+    description="Search for pattern in files. Returns matching lines with context.",
+    schema={
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "Regex pattern to search for",
+            },
+            "path": {
+                "type": "string",
+                "description": "Directory or file path to search in",
+            },
+            "recursive": {
+                "type": "boolean",
+                "description": "Search recursively in subdirectories",
+                "default": True,
+            },
+            "file_pattern": {
+                "type": "string",
+                "description": "Glob pattern for files to include (e.g., '*.py')",
+                "default": "*",
+            },
+        },
+        "required": ["pattern", "path"],
+    },
+)
+def grep_files(
+    pattern: str,
+    path: str = ".",
+    recursive: bool = True,
+    file_pattern: str = "*",
+) -> str:
+    """Search for a regex pattern in files."""
+    try:
+        validated = _validate_path(path)
+        if isinstance(validated, str):
+            return validated
+
+        search_path = validated if validated.is_dir() else validated.parent
+        if not search_path.exists():
+            return f"Error: Path does not exist: {path}"
+
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            return f"Error: Invalid regex pattern: {e}"
+
+        matches = []
+        if recursive:
+            files = search_path.rglob(file_pattern)
+        else:
+            files = search_path.glob(file_pattern)
+
+        for f in files:
+            if not f.is_file():
+                continue
+            try:
+                content = f.read_text(errors="ignore")
+                for i, line in enumerate(content.splitlines(), 1):
+                    if re.search(pattern, line):
+                        matches.append(f"{f}:{i}: {line.rstrip()}")
+            except PermissionError:
+                continue
+            except Exception:
+                continue
+
+        if not matches:
+            return f"No matches found for '{pattern}' in {path}"
+        return "\n".join(matches[:100])
+
+    except Exception as e:
+        return f"Error searching files: {e}"
+
+
+@tool(
+    name="glob",
+    description="Find files matching a glob pattern.",
+    schema={
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "Glob pattern (e.g., '**/*.py')",
+            },
+            "path": {
+                "type": "string",
+                "description": "Base directory to search in",
+                "default": ".",
+            },
+        },
+        "required": ["pattern"],
+    },
+)
+def glob_files(pattern: str, path: str = ".") -> str:
+    """Find files matching a glob pattern."""
+    try:
+        validated = _validate_path(path)
+        if isinstance(validated, str):
+            return validated
+
+        base = validated if validated.is_dir() else validated.parent
+        matches = list(base.glob(pattern))
+
+        if not matches:
+            return f"No files found matching '{pattern}' in {path}"
+
+        result = []
+        for m in matches[:50]:
+            rel = m.relative_to(base) if m.is_relative_to(base) else m
+            result.append(str(rel))
+
+        return "\n".join(result)
+    except Exception as e:
+        return f"Error finding files: {e}"
+
+
+CORE_TOOLS = [read_file, write_file, edit_file, bash, cmd, grep_files, glob_files]
+CORE_TOOL_NAMES = {"read", "write", "edit", "bash", "cmd", "grep", "glob"}
 
 
 def get_tool(name: str):

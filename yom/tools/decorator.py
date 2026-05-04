@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from functools import wraps
-from typing import Callable, TypeVar, overload
+from typing import Any, Callable, TypeVar, overload
 
 from yom.tools.result import ToolResult
 
@@ -20,13 +20,14 @@ class ToolDecorator:
         name: str | None = None,
         description: str | None = None,
         parameters: dict | None = None,
+        schema: dict | None = None,
     ):
         self.name = name
         self.description = description
-        self.parameters = parameters  # None means "build from func signature"
+        self.parameters = parameters
+        self.schema = schema
 
     def __call__(self, func: F) -> F:
-        # Detect async first, before defining wrappers
         is_async = inspect.iscoroutinefunction(func)
 
         @wraps(func)
@@ -54,48 +55,69 @@ class ToolDecorator:
                 return result
             return ToolResult(tool_name=tool_name, content=str(result))
 
-        # Build description from func docstring if not provided
         desc = self.description
         if desc is None:
             desc = func.__doc__ or f"Tool: {func.__name__}"
         desc = desc.strip()
 
-        # Build parameters schema from function signature
-        params = self.parameters
-        if not params:
-            sig = inspect.signature(func)
-            props = {}
-            required = []
-            type_map = {
-                str: "string",
-                int: "integer",
-                float: "number",
-                bool: "boolean",
-                list: "array",
-                dict: "object",
-            }
-            for pname, param in sig.parameters.items():
-                ann = param.annotation
-                if ann != inspect.Parameter.empty and ann in type_map:
-                    props[pname] = {"type": type_map[ann]}
-                else:
-                    props[pname] = {"type": "string"}
-                if param.default is inspect.Parameter.empty:
-                    required.append(pname)
-            params = {
-                "type": "object",
-                "properties": props,
-                "required": required,
-            }
+        params = self._build_parameters(func)
 
-        # Attach metadata to wrapper
         wrapper = async_wrapper if is_async else sync_wrapper
         wrapper._tool_name = self.name or func.__name__
         wrapper._tool_description = desc
         wrapper._tool_parameters = params
         wrapper._tool_func = func
+        wrapper._tool_schema_version = "1.0"
 
         return wrapper
+
+    def _build_parameters(self, func: Callable) -> dict:
+        """Build parameters schema, using explicit schema if provided."""
+        if self.schema is not None:
+            return self._normalize_schema(self.schema)
+        if self.parameters is not None:
+            return self._normalize_schema(self.parameters)
+        return self._build_from_signature(func)
+
+    def _normalize_schema(self, schema: dict) -> dict:
+        """Normalize schema to always have properties wrapper."""
+        if "properties" in schema:
+            return schema
+        return {"type": "object", "properties": schema}
+
+    def _build_from_signature(self, func: Callable) -> dict:
+        """Build parameters schema from function signature."""
+        sig = inspect.signature(func)
+        props = {}
+        required = []
+        type_map = {
+            str: "string",
+            int: "integer",
+            float: "number",
+            bool: "boolean",
+            list: "array",
+            dict: "object",
+        }
+        for pname, param in sig.parameters.items():
+            ann = param.annotation
+            prop = {}
+            if ann != inspect.Parameter.empty and ann in type_map:
+                prop["type"] = type_map[ann]
+            else:
+                prop["type"] = "string"
+
+            if param.default is not inspect.Parameter.empty:
+                prop["default"] = param.default
+            else:
+                required.append(pname)
+
+            props[pname] = prop
+
+        return {
+            "type": "object",
+            "properties": props,
+            "required": required,
+        }
 
 
 @overload
@@ -108,6 +130,7 @@ def tool(
     name: str | None = None,
     description: str | None = None,
     parameters: dict | None = None,
+    schema: dict | None = None,
 ) -> Callable[[F], F]: ...
 
 
@@ -117,6 +140,7 @@ def tool(
     name: str | None = None,
     description: str | None = None,
     parameters: dict | None = None,
+    schema: dict | None = None,
 ) -> F | Callable[[F], F]:
     """
     Decorator to mark a function as an agent tool.
@@ -130,7 +154,19 @@ def tool(
         @tool(name="custom_name", description="Custom description")
         def my_tool(arg1: str) -> str:
             return f"Result: {arg1}"
+
+        @tool(schema={
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query"
+                }
+            },
+            "required": ["query"]
+        })
+        def search(query: str) -> str:
+            return f"Results for: {query}"
     """
     if func is not None:
         return ToolDecorator()(func)
-    return ToolDecorator(name=name, description=description, parameters=parameters)
+    return ToolDecorator(name=name, description=description, parameters=parameters, schema=schema)
