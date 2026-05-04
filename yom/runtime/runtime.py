@@ -178,9 +178,9 @@ class AgentRuntime:
         self._runtime = None
 
 
-class DefaultRuntime(AgentRuntime):
+class CoreRuntime(AgentRuntime):
     """
-    Default AgentRuntime with LLM calls and tool calling.
+    Core AgentRuntime with LLM calls and tool calling.
 
     Uses yom's provider system for LLM calls.
     """

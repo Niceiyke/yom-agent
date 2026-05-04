@@ -11,7 +11,7 @@ import yaml
 from yom.models import AgentState
 from yom.runtime.config import RuntimeSettings
 from yom.runtime.deps import RuntimeDeps
-from yom.runtime.runtime import AgentRuntime, DefaultRuntime
+from yom.runtime.runtime import AgentRuntime, CoreRuntime
 from yom.session import FileSessionBackend, InMemorySessionBackend
 from yom.context import ContextConfig, ContextManager, create_token_counter
 from yom.logging_config import setup_logging
@@ -36,7 +36,7 @@ def build_runtime(
     if deps is None:
         deps = _build_default_deps(settings)
 
-    return DefaultRuntime(deps=deps, settings=settings)
+    return CoreRuntime(deps=deps, settings=settings)
 
 
 def _build_default_deps(settings: RuntimeSettings) -> RuntimeDeps:
