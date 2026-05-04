@@ -19,6 +19,7 @@ jobs:
       - name: Build
         run: |
           uv sync
+          uv pip install build
           uv run python -m build
 
       - name: Create Release
