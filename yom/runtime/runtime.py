@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -15,6 +16,8 @@ from yom.providers import create_provider, CompletionConfig
 
 if TYPE_CHECKING:
     from yom.tools import Tool
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant. Respond to the user's requests concisely and accurately."
 DEFAULT_MODEL = "MiniMax-M2.7"
@@ -234,6 +237,12 @@ class StandaloneRuntime(AgentRuntime):
         if self._hooks:
             await self._hooks.emit("before_turn", state=state, iteration=iteration)
 
+        logger.info(
+            f"Turn {iteration} starting",
+            runtime_id=self._settings.runtime_id,
+            message_count=len(state.messages),
+        )
+
         messages_for_loop = state.messages
         if self._context_manager is not None:
             max_tokens = self._settings.max_context_tokens
@@ -243,6 +252,7 @@ class StandaloneRuntime(AgentRuntime):
                 if len(truncated_dicts) < len(message_dicts):
                     from yom.models.messages import Message
                     messages_for_loop = [Message.from_dict(m) for m in truncated_dicts]
+                    logger.debug(f"Truncated {len(message_dicts) - len(truncated_dicts)} messages")
 
         provider = self._get_provider()
         model = self._settings.default_model or DEFAULT_MODEL
@@ -260,7 +270,14 @@ class StandaloneRuntime(AgentRuntime):
                 model=model,
                 config=config,
             )
+            logger.info(
+                f"Turn {iteration} completed",
+                runtime_id=self._settings.runtime_id,
+                tool_calls=tool_count,
+                response_length=len(response_content),
+            )
         except Exception as e:
+            logger.exception(f"Turn {iteration} failed: {e}")
             if self._hooks:
                 await self._hooks.emit("on_error", state=state, error=str(e))
             response_content = f"Error: {e}"

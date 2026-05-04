@@ -14,6 +14,7 @@ from yom.runtime.deps import RuntimeDeps
 from yom.runtime.runtime import AgentRuntime, StandaloneRuntime
 from yom.session import FileSessionBackend, InMemorySessionBackend
 from yom.context import ContextConfig, ContextManager, create_token_counter
+from yom.logging_config import setup_logging
 
 
 def build_runtime(
@@ -30,6 +31,9 @@ def build_runtime(
         mode: "standalone" (pure Python, no LLM calls) or "yom_agent" (uses real LLM)
     """
     settings.validate()
+
+    if settings.log_level:
+        setup_logging(level=settings.log_level)
 
     if deps is None:
         deps = _build_default_deps(settings)
