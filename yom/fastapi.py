@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 from yom import AgentRuntime, RuntimeSettings, build_runtime
 from yom.models import RuntimeRunResult
@@ -170,7 +170,6 @@ def create_agent_router(
     settings: RuntimeSettings,
     auth_hook: Callable[..., bool] | None = None,
     prefix: str = "/agent",
-    mode: Literal["standalone", "yom_agent"] = "standalone",
 ) -> AgentRouter:
     """
     Create an AgentRouter with runtime built from settings.
@@ -191,9 +190,8 @@ def create_agent_router(
         settings: RuntimeSettings configuration
         auth_hook: Optional auth callback (receives WebSocket or Request)
         prefix: URL prefix for agent endpoints
-        mode: "standalone" or "yom_agent"
     """
-    runtime = build_runtime(settings, mode=mode)
+    runtime = build_runtime(settings)
     return AgentRouter(runtime=runtime, prefix=prefix, auth_hook=auth_hook)
 
 
@@ -202,7 +200,6 @@ def create_agent_app(
     title: str | None = None,
     auth_hook: Callable[..., bool] | None = None,
     prefix: str = "/agent",
-    mode: Literal["standalone", "yom_agent"] = "standalone",
 ) -> FastAPI:
     """
     Create a standalone FastAPI app with agent endpoints.
@@ -224,12 +221,11 @@ def create_agent_app(
         title: Optional FastAPI app title (defaults to runtime_id)
         auth_hook: Optional auth callback
         prefix: URL prefix for agent endpoints
-        mode: "standalone" or "yom_agent"
     """
     if FastAPI is None:
         raise ImportError("fastapi not installed. Run: pip install agent-core[fastapi]")
 
-    runtime = build_runtime(settings, mode=mode)
+    runtime = build_runtime(settings)
     router = AgentRouter(runtime=runtime, prefix=prefix, auth_hook=auth_hook)
 
     app = FastAPI(

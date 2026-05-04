@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Any
 
 import yaml
 
@@ -20,7 +20,6 @@ from yom.logging_config import setup_logging
 def build_runtime(
     settings: RuntimeSettings,
     deps: RuntimeDeps | None = None,
-    mode: Literal["standalone", "yom_agent"] = "standalone",
 ) -> AgentRuntime:
     """
     Build an AgentRuntime from RuntimeSettings.
@@ -28,7 +27,6 @@ def build_runtime(
     Args:
         settings: RuntimeSettings configuration
         deps: Optional RuntimeDeps (created from settings if None)
-        mode: "standalone" (pure Python, no LLM calls) or "yom_agent" (uses real LLM)
     """
     settings.validate()
 
@@ -38,49 +36,7 @@ def build_runtime(
     if deps is None:
         deps = _build_default_deps(settings)
 
-    if mode == "yom_agent":
-        return _build_yom_agent_runtime(settings, deps)
     return StandaloneRuntime(deps=deps, settings=settings)
-
-
-def _build_yom_agent_runtime(
-    settings: RuntimeSettings,
-    deps: RuntimeDeps,
-) -> "YomAgentRuntime":
-    """Build a runtime that uses yom_agent internals."""
-    try:
-        from yom.runtime.integration import (
-            YomAgentRuntime,
-            IntegratedDeps,
-            convert_yom_tools,
-        )
-
-        from coding_agent.tools.registry import ToolRegistry as CAToolRegistry
-        from coding_agent.agent.session import SessionManager as CASessionManager, RuntimeSession
-        from coding_agent.hooks.hooks import global_hooks
-
-        ca_tool_registry = CAToolRegistry()
-
-        # Convert and register agent-core tools into yom_agent registry
-        tool_map, schemas = convert_yom_tools(settings.tools)
-        for name, adapter in tool_map.items():
-            ca_tool_registry.register(adapter.execute, adapter.schema)
-
-        ca_session_manager = CASessionManager()
-        ca_session = RuntimeSession()
-
-        integrated_deps = IntegratedDeps(
-            tool_registry=ca_tool_registry,
-            session_manager=ca_session_manager,
-            hooks=global_hooks,
-            session=ca_session,
-        )
-
-        return YomAgentRuntime(deps=integrated_deps, settings=settings)
-    except ImportError as e:
-        raise ImportError(
-            f"yom_agent not available. Install it or use mode='standalone'. Error: {e}"
-        )
 
 
 def _build_default_deps(settings: RuntimeSettings) -> RuntimeDeps:
@@ -107,7 +63,6 @@ def _build_default_deps(settings: RuntimeSettings) -> RuntimeDeps:
 def build_runtime_from_yaml(
     path: str | Path,
     overrides: dict | None = None,
-    mode: Literal["standalone", "yom_agent"] = "standalone",
 ) -> AgentRuntime:
     """
     Build runtime from YAML config file.
@@ -115,7 +70,6 @@ def build_runtime_from_yaml(
     Args:
         path: Path to YAML config file
         overrides: Optional dict to patch specific values
-        mode: "standalone" or "yom_agent"
     """
     path = Path(path)
     if not path.exists():
@@ -126,7 +80,6 @@ def build_runtime_from_yaml(
     if overrides:
         config = _deep_merge(config, overrides)
 
-    # Convert session backend string to actual backend
     if "session" in config:
         session_config = config["session"]
         backend_type = session_config.get("backend", "file")
@@ -137,7 +90,6 @@ def build_runtime_from_yaml(
         elif backend_type == "memory":
             config["session_backend"] = InMemorySessionBackend()
 
-    # Handle tools list (can contain dicts or import paths)
     if "tools" in config:
         tools = []
         for tool_spec in config["tools"]:
@@ -146,13 +98,12 @@ def build_runtime_from_yaml(
         config["tools"] = tools
 
     settings = RuntimeSettings(**config)
-    return build_runtime(settings, mode=mode)
+    return build_runtime(settings)
 
 
 def build_runtime_from_env(
     prefix: str = "AGENT_",
     required: list[str] | None = None,
-    mode: Literal["standalone", "yom_agent"] = "standalone",
 ) -> AgentRuntime:
     """
     Build runtime from environment variables.
@@ -172,7 +123,7 @@ def build_runtime_from_env(
         session_backend=InMemorySessionBackend(),
     )
 
-    return build_runtime(settings, mode=mode)
+    return build_runtime(settings)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
