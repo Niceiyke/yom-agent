@@ -223,19 +223,15 @@ class AgentLoop:
         max_turns = max_turns or self.config.max_turns
         config = config or CompletionConfig(max_tokens=4096)
 
-        # Convert yom messages to provider messages
         provider_messages = self._convert_messages(messages)
 
-        # Add system prompt with tool schemas
-        system_content = "You are a helpful assistant with access to tools."
         tool_schemas = self._get_tool_schemas()
         if tool_schemas:
-            system_content += "\n\nWhen you need to use a tool, respond with JSON:\n"
-            system_content += json.dumps({"tool_calls": [{"name": "tool_name", "arguments": {}}]})
-            system_content += "\n\nAvailable tools:\n" + json.dumps(tool_schemas, indent=2)
-
-        # Add system message
-        provider_messages.insert(0, Message(role="system", content=system_content))
+            system_content = "You are a helpful assistant with access to tools. Use them as needed."
+            provider_messages.insert(0, Message(role="system", content=system_content))
+        else:
+            system_content = "You are a helpful assistant."
+            provider_messages.insert(0, Message(role="system", content=system_content))
 
         iteration = 0
         total_tool_calls = 0
@@ -244,10 +240,8 @@ class AgentLoop:
         while iteration < max_turns:
             iteration += 1
 
-            # Call LLM
-            response = await self.provider.complete(provider_messages, model, config)
+            response = await self.provider.complete(provider_messages, model, config, tools=tool_schemas if tool_schemas else None)
 
-            # Track usage
             if response.usage:
                 self._last_usage = {
                     "input_tokens": response.usage.input_tokens,
@@ -255,14 +249,11 @@ class AgentLoop:
                     "total_tokens": response.usage.total_tokens,
                 }
 
-            # Check for tool calls in response
             tool_calls = self._parse_tool_calls(response)
 
             if not tool_calls:
-                # No tool calls, return text response with all tool calls made
                 return response.content, all_tool_calls, total_tool_calls
 
-            # Execute tools
             tool_results = []
             for tc in tool_calls[:self.config.max_tool_calls]:
                 result = self._execute_tool(tc)
@@ -270,14 +261,12 @@ class AgentLoop:
                 total_tool_calls += 1
                 all_tool_calls.append(tc)
 
-            # Add assistant message with tool calls
             assistant_msg = Message(
                 role="assistant",
                 content=response.content,
             )
             provider_messages.append(assistant_msg)
 
-            # Add tool results as tool messages
             for result in tool_results:
                 tool_msg = Message(
                     role="tool",
@@ -285,7 +274,6 @@ class AgentLoop:
                 )
                 provider_messages.append(tool_msg)
 
-        # Max turns reached
         return f"Max turns ({max_turns}) reached. Last response: {response.content}", all_tool_calls, total_tool_calls
 
     def _convert_messages(self, yom_messages: list[YomMessage]) -> list[Message]:

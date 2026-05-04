@@ -71,8 +71,7 @@ class TestAgentLoop:
         """Test that max_turns is enforced."""
         mock_provider = MagicMock()
 
-        # Always return a tool call to keep the loop going
-        async def mock_complete(messages, model, config=None):
+        async def mock_complete(messages, model, config=None, tools=None):
             return LLMResponse(
                 content='{"tool_calls": [{"name": "read", "arguments": {"path": "a.txt"}}]}',
                 model=model,
@@ -86,9 +85,7 @@ class TestAgentLoop:
 
         result, tool_calls, count = await loop.run_turn(messages, "gpt-4")
 
-        # Should hit max_turns and return with "Max turns reached"
         assert "Max turns" in result
-        # 3 LLM calls (initial + 2 tool iterations before hitting max)
         assert mock_provider.complete.call_count == 3
 
     @pytest.mark.asyncio
@@ -98,22 +95,19 @@ class TestAgentLoop:
 
         call_count = 0
 
-        async def mock_complete(messages, model, config=None):
+        async def mock_complete(messages, model, config=None, tools=None):
             nonlocal call_count
             call_count += 1
 
-            # First call: return a tool call
             if call_count == 1:
                 return LLMResponse(
                     content='{"tool_calls": [{"name": "read", "arguments": {"path": "a.txt"}}]}',
                     model=model,
                 )
-            # Second call: return final response
             return LLMResponse(content="File contents: hello", model=model)
 
         mock_provider.complete = AsyncMock(side_effect=mock_complete)
 
-        # Create a mock read tool
         mock_read = MagicMock()
         mock_read._tool_name = "read"
         mock_read.execute = MagicMock(return_value=ToolResult("read", "hello"))

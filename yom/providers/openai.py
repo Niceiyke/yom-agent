@@ -42,7 +42,7 @@ class OpenAIProvider(BaseProvider):
         result = []
         for msg in messages:
             if msg.role == "system":
-                continue  # System messages handled separately
+                continue
             result.append({
                 "role": msg.role,
                 "content": msg.content,
@@ -85,6 +85,7 @@ class OpenAIProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         """Send completion request to OpenAI-compatible endpoint."""
         try:
@@ -112,6 +113,8 @@ class OpenAIProvider(BaseProvider):
                 request_kwargs["top_p"] = config.top_p
             if config.stop_sequences:
                 request_kwargs["stop"] = config.stop_sequences
+            if tools:
+                request_kwargs["tools"] = tools
 
             return await self.client.chat.completions.create(**request_kwargs)
 
@@ -127,6 +130,17 @@ class OpenAIProvider(BaseProvider):
         text = choice.message.content or ""
         finish_reason = choice.finish_reason or "error"
 
+        tool_calls = []
+        raw_response = {}
+        if hasattr(choice.message, "tool_calls") and choice.message.tool_calls:
+            for tc in choice.message.tool_calls:
+                func = tc.function
+                tool_calls.append({
+                    "name": func.name,
+                    "arguments": func.arguments,
+                })
+            raw_response["tool_calls"] = tool_calls
+
         usage = None
         if response.usage:
             usage = Usage(
@@ -135,12 +149,16 @@ class OpenAIProvider(BaseProvider):
                 total_tokens=response.usage.total_tokens,
             )
 
+        raw_data = response.model_dump() if hasattr(response, "model_dump") else {}
+        if tool_calls:
+            raw_data["tool_calls"] = tool_calls
+
         return LLMResponse(
             content=text,
             model=response.model,
             usage=usage,
             stop_reason=finish_reason,
-            raw=response.model_dump() if hasattr(response, "model_dump") else {},
+            raw=raw_data,
         )
 
     async def stream(
@@ -148,6 +166,7 @@ class OpenAIProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream completion from OpenAI-compatible endpoint."""
         try:
@@ -159,10 +178,7 @@ class OpenAIProvider(BaseProvider):
 
         config = config or CompletionConfig()
 
-        client = AsyncOpenAI(
-            api_key=self._get_api_key(),
-            base_url=self._base_url,
-        )
+        client = self.client
 
         openai_messages = [
             {"role": "system", "content": msg.content} if msg.role == "system"
@@ -180,13 +196,17 @@ class OpenAIProvider(BaseProvider):
             request_kwargs["temperature"] = config.temperature
         if config.top_p is not None:
             request_kwargs["top_p"] = config.top_p
+        if tools:
+            request_kwargs["tools"] = tools
 
         stream = await client.chat.completions.create(**request_kwargs)
 
+        has_content = False
         async for chunk in stream:
             if chunk.choices:
                 choice = chunk.choices[0]
                 if choice.delta.content:
+                    has_content = True
                     yield StreamChunk(
                         content=choice.delta.content,
                         is_final=False,
@@ -197,5 +217,7 @@ class OpenAIProvider(BaseProvider):
                         is_final=True,
                         stop_reason=choice.finish_reason,
                     )
+                    return
 
-        yield StreamChunk(content="", is_final=True)
+        if not has_content:
+            yield StreamChunk(content="", is_final=True)

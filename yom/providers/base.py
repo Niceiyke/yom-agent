@@ -70,6 +70,7 @@ class BaseProvider(ABC):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         """Send a completion request."""
         ...
@@ -79,6 +80,7 @@ class BaseProvider(ABC):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion response."""
         raise NotImplementedError(f"{self.provider_name} does not support streaming")
