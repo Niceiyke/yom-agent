@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import glob as glob_module
+import os
 import re
 import shlex
 from pathlib import Path
@@ -12,31 +13,78 @@ from typing import Any
 from yom.tools import tool
 
 ALLOWED_DIRS = {"~": Path.home()}
+ALLOWED_COMMANDS: list[str] | None = None
+
+
+def set_allowed_commands(commands: list[str] | None) -> None:
+    """Set list of allowed bash commands (for security)."""
+    global ALLOWED_COMMANDS
+    ALLOWED_COMMANDS = commands
 
 
 def _validate_path(path: str, base_dir: str = "~") -> Path | str:
     """Validate path stays within allowed base directory."""
-    file_path = Path(path).expanduser().resolve()
+    abs_path = Path(path).expanduser().resolve()
     base = ALLOWED_DIRS.get(base_dir, Path(base_dir).expanduser().resolve())
-    try:
-        file_path.relative_to(base)
-        return file_path
-    except ValueError:
+
+    if not str(abs_path).startswith(str(base)):
+        for allowed_base in ALLOWED_DIRS.values():
+            if str(abs_path).startswith(str(allowed_base)):
+                return abs_path
+        if path.startswith("/etc/") or path.startswith("/sys/") or path.startswith("/proc/"):
+            return f"Error: Path '{path}' is in a protected directory"
+        if abs_path.is_relative_to(Path("/etc")) or abs_path.is_relative_to(Path("/sys")) or abs_path.is_relative_to(Path("/proc")):
+            return f"Error: Path '{path}' is in a protected directory"
         return f"Error: Path '{path}' escapes allowed directory '{base_dir}'"
+    return abs_path
+
+
+def _validate_command(command: str) -> str | None:
+    """Validate bash command against allowed list if configured."""
+    if ALLOWED_COMMANDS is None:
+        return None
+
+    safe_commands = {"ls", "cat", "head", "tail", "grep", "find", "pwd", "cd", "echo", "printf", "wc", "sort", "uniq", "awk", "sed"}
+    tokens = shlex.split(command)
+    if not tokens:
+        return "Error: Empty command"
+    base_cmd = tokens[0]
+    if base_cmd not in safe_commands:
+        return f"Error: Command '{base_cmd}' not allowed. Allowed: {', '.join(sorted(safe_commands))}"
+    return None
+
+
+DANGEROUS_PATTERNS = [
+    r"\.\./",
+    r"\|\s*rm",
+    r";\s*rm",
+    r"&\s*rm",
+    r"rm\s+-rf",
+    r">\s*/dev/sd",
+    r"dd\s+if=.*of=/dev/",
+]
+
+
+def _check_dangerous_patterns(command: str) -> str | None:
+    """Check for obviously dangerous patterns."""
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return f"Error: Command contains potentially dangerous pattern: {pattern}"
+    return None
 
 
 @tool(name="read", description="Read the contents of a file. Returns the file content or error message.")
 def read_file(path: str) -> str:
     """Read the contents of a file at the given path."""
+    validated = _validate_path(path)
+    if isinstance(validated, str):
+        return validated
     try:
-        validated = _validate_path(path)
-        if isinstance(validated, str):
-            return validated
         if not validated.exists():
             return f"Error: File not found: {path}"
         if not validated.is_file():
             return f"Error: Not a file: {path}"
-        return validated.read_text()
+        return validated.read_text(errors="replace")
     except PermissionError:
         return f"Error: Permission denied: {path}"
     except Exception as e:
@@ -46,10 +94,10 @@ def read_file(path: str) -> str:
 @tool(name="write", description="Write content to a file. Creates the file if it doesn't exist.")
 def write_file(path: str, content: str) -> str:
     """Write content to a file at the given path."""
+    validated = _validate_path(path)
+    if isinstance(validated, str):
+        return validated
     try:
-        validated = _validate_path(path)
-        if isinstance(validated, str):
-            return validated
         validated.parent.mkdir(parents=True, exist_ok=True)
         validated.write_text(content)
         return f"Successfully wrote to {path}"
@@ -62,10 +110,10 @@ def write_file(path: str, content: str) -> str:
 @tool(name="edit", description="Edit a file by replacing old_string with new_string. Returns success or error.")
 def edit_file(path: str, old_string: str, new_string: str) -> str:
     """Replace old_string with new_string in a file."""
+    validated = _validate_path(path)
+    if isinstance(validated, str):
+        return validated
     try:
-        validated = _validate_path(path)
-        if isinstance(validated, str):
-            return validated
         if not validated.exists():
             return f"Error: File not found: {path}"
 
@@ -83,9 +131,42 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
         return f"Error editing {path}: {e}"
 
 
-@tool(name="bash", description="Execute a bash command and return the output. WARNING: Use with caution - commands run with user permissions.")
+@tool(
+    name="bash",
+    description="Execute a bash command and return the output. WARNING: Use with caution - commands run with user permissions.",
+    schema={
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "The bash command to execute",
+            },
+            "cwd": {
+                "type": "string",
+                "description": "Working directory for the command",
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Timeout in seconds",
+                "default": 30,
+            },
+        },
+        "required": ["command"],
+    },
+)
 async def bash(command: str, cwd: str | None = None, timeout: int = 30) -> str:
     """Execute a bash command and return stdout/stderr."""
+    error = _check_dangerous_patterns(command)
+    if error:
+        return error
+
+    error = _validate_command(command)
+    if error:
+        return error
+
+    if timeout > 120:
+        return f"Error: Timeout cannot exceed 120 seconds (got {timeout})"
+
     try:
         result = await asyncio.wait_for(
             asyncio.create_subprocess_shell(
@@ -97,21 +178,44 @@ async def bash(command: str, cwd: str | None = None, timeout: int = 30) -> str:
             timeout=timeout,
         )
         stdout, stderr = await result.communicate()
-        output = stdout.decode() if stdout else ""
-        err = stderr.decode() if stderr else ""
+        output = stdout.decode(errors="replace") if stdout else ""
+        err = stderr.decode(errors="replace") if stderr else ""
 
         if result.returncode != 0:
             return f"[Exit code: {result.returncode}]\n{err or output}"
         return output or "Command executed successfully (no output)"
     except asyncio.TimeoutError:
         return f"Error: Command timed out after {timeout} seconds"
+    except PermissionError:
+        return f"Error: Permission denied to execute command"
     except Exception as e:
         return f"Error executing command: {e}"
 
 
-@tool(name="cmd", description="Execute a Windows command and return the output.")
+@tool(
+    name="cmd",
+    description="Execute a Windows command and return the output.",
+    schema={
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "The Windows command to execute",
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Timeout in seconds",
+                "default": 30,
+            },
+        },
+        "required": ["command"],
+    },
+)
 async def cmd(command: str, timeout: int = 30) -> str:
     """Execute a Windows cmd command and return stdout/stderr."""
+    if timeout > 120:
+        return f"Error: Timeout cannot exceed 120 seconds (got {timeout})"
+
     try:
         result = await asyncio.wait_for(
             asyncio.create_subprocess_shell(
@@ -123,8 +227,8 @@ async def cmd(command: str, timeout: int = 30) -> str:
             timeout=timeout,
         )
         stdout, stderr = await result.communicate()
-        output = stdout.decode() if stdout else ""
-        err = stderr.decode() if stderr else ""
+        output = stdout.decode(errors="replace") if stdout else ""
+        err = stderr.decode(errors="replace") if stderr else ""
 
         if result.returncode != 0:
             return f"[Exit code: {result.returncode}]\n{err or output}"
@@ -170,21 +274,21 @@ def grep_files(
     file_pattern: str = "*",
 ) -> str:
     """Search for a regex pattern in files."""
+    validated = _validate_path(path)
+    if isinstance(validated, str):
+        return validated
+
+    search_path = validated if validated.is_dir() else validated.parent
+    if not search_path.exists():
+        return f"Error: Path does not exist: {path}"
+
     try:
-        validated = _validate_path(path)
-        if isinstance(validated, str):
-            return validated
+        re.compile(pattern)
+    except re.error as e:
+        return f"Error: Invalid regex pattern: {e}"
 
-        search_path = validated if validated.is_dir() else validated.parent
-        if not search_path.exists():
-            return f"Error: Path does not exist: {path}"
-
-        try:
-            re.compile(pattern)
-        except re.error as e:
-            return f"Error: Invalid regex pattern: {e}"
-
-        matches = []
+    matches = []
+    try:
         if recursive:
             files = search_path.rglob(file_pattern)
         else:
@@ -202,13 +306,12 @@ def grep_files(
                 continue
             except Exception:
                 continue
-
-        if not matches:
-            return f"No matches found for '{pattern}' in {path}"
-        return "\n".join(matches[:100])
-
     except Exception as e:
         return f"Error searching files: {e}"
+
+    if not matches:
+        return f"No matches found for '{pattern}' in {path}"
+    return "\n".join(matches[:100])
 
 
 @tool(
@@ -232,25 +335,28 @@ def grep_files(
 )
 def glob_files(pattern: str, path: str = ".") -> str:
     """Find files matching a glob pattern."""
+    validated = _validate_path(path)
+    if isinstance(validated, str):
+        return validated
+
+    base = validated if validated.is_dir() else validated.parent
     try:
-        validated = _validate_path(path)
-        if isinstance(validated, str):
-            return validated
-
-        base = validated if validated.is_dir() else validated.parent
         matches = list(base.glob(pattern))
-
-        if not matches:
-            return f"No files found matching '{pattern}' in {path}"
-
-        result = []
-        for m in matches[:50]:
-            rel = m.relative_to(base) if m.is_relative_to(base) else m
-            result.append(str(rel))
-
-        return "\n".join(result)
     except Exception as e:
         return f"Error finding files: {e}"
+
+    if not matches:
+        return f"No files found matching '{pattern}' in {path}"
+
+    result = []
+    for m in matches[:50]:
+        try:
+            rel = m.relative_to(base) if m.is_relative_to(base) else m
+            result.append(str(rel))
+        except ValueError:
+            result.append(str(m))
+
+    return "\n".join(result)
 
 
 CORE_TOOLS = [read_file, write_file, edit_file, bash, cmd, grep_files, glob_files]
