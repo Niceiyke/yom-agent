@@ -63,21 +63,32 @@ class AgentLoop:
         self.provider = provider
         self.tools = tools or []
         self.config = config or AgentLoopConfig()
+        self._last_usage: dict | None = None
 
     def _get_tool_schemas(self) -> list[dict[str, Any]]:
-        """Get tool schemas for LLM."""
+        """Get tool schemas for LLM in provider-agnostic format."""
         schemas = []
         for tool in self.tools:
             name = getattr(tool, "_tool_name", None) or getattr(tool, "name", None)
             if not name:
                 continue
-            desc = getattr(tool, "_tool_description", "") or getattr(tool, "description", "")
-            params = getattr(tool, "_tool_parameters", None) or getattr(tool, "parameters", {}) or {}
+            desc = getattr(tool, "_tool_description", None) or getattr(tool, "description", None) or ""
+            # Ensure description is a string (avoid MagicMock issues)
+            if not isinstance(desc, str):
+                desc = str(desc) if desc else ""
+            params = getattr(tool, "_tool_parameters", None) or getattr(tool, "parameters", None) or {}
+
+            # Normalize schema format for different providers
+            if isinstance(params, dict):
+                if "properties" not in params:
+                    params = {"type": "object", "properties": params}
+            else:
+                params = {"type": "object", "properties": {}}
 
             schema = {
                 "name": name,
                 "description": desc,
-                "parameters": params if "properties" in params else {"properties": params, "type": "object"},
+                "parameters": params,
             }
             schemas.append(schema)
         return schemas
@@ -86,28 +97,76 @@ class AgentLoop:
         """Parse tool calls from LLM response content."""
         tool_calls = []
 
-        # Handle content that might be JSON with tool calls
-        content = response.content
+        # Handle structured responses from providers
+        raw = response.raw or {}
+        content = response.content if isinstance(response.content, str) else ""
 
-        # Try to find tool call JSON in content
-        # Pattern: tool-use blocks in Anthropic format or similar
-        try:
-            # If content is a dict or has structured data
-            if isinstance(content, dict):
-                pass
-            # Try to find JSON array of tool calls
-            json_match = re.search(r'\[.*?\{.*?\}.*?\]', content, re.DOTALL)
-            if json_match:
-                tool_data = json.loads(json_match.group())
-                if isinstance(tool_data, list):
-                    for item in tool_data:
-                        if isinstance(item, dict) and "name" in item:
-                            tool_calls.append(ToolCall(
-                                name=item["name"],
-                                arguments=item.get("arguments", item.get("input", {})),
-                            ))
-        except (json.JSONDecodeError, TypeError):
-            pass
+        # Check for provider-specific tool_call structures first
+        # OpenAI format: response.raw might contain tool_calls
+        if "tool_calls" in raw:
+            for tc in raw.get("tool_calls", []):
+                if isinstance(tc, dict):
+                    func = tc.get("function", tc)
+                    tool_calls.append(ToolCall(
+                        name=func.get("name", ""),
+                        arguments=func.get("arguments", {}),
+                    ))
+            return tool_calls
+
+        # Anthropic format: response.raw might have content blocks with input
+        if "content" in raw:
+            content_blocks = raw.get("content", [])
+            if isinstance(content_blocks, list):
+                for block in content_blocks:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        tool_calls.append(ToolCall(
+                            name=block.get("name", ""),
+                            arguments=block.get("input", {}),
+                        ))
+                if tool_calls:
+                    return tool_calls
+
+        # Fallback: parse from text content
+        # Try to find and parse tool_calls JSON array
+        patterns = [
+            r'"tool_calls"\s*:\s*(\[[^\]]*\])',
+            r'tool_calls\s*\|\s*(\[.*?\])',
+        ]
+
+        for pattern in patterns:
+            try:
+                match = re.search(pattern, content, re.DOTALL)
+                if match:
+                    json_str = match.group(1) if '(' in pattern else match.group(0)
+                    data = json.loads(json_str)
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and "name" in item:
+                                args = item.get("arguments", item.get("input", {}))
+                                if isinstance(args, str):
+                                    try:
+                                        args = json.loads(args)
+                                    except json.JSONDecodeError:
+                                        args = {"value": args}
+                                tool_calls.append(ToolCall(
+                                    name=item["name"],
+                                    arguments=args,
+                                ))
+                        if tool_calls:
+                            break
+            except (json.JSONDecodeError, TypeError, re.error):
+                continue
+
+        # Last resort: look for name/arguments pairs in content
+        if not tool_calls:
+            name_match = re.search(r'"name"\s*:\s*"([^"]+)"', content)
+            args_match = re.search(r'"arguments"\s*:\s*(\{[^}]+\})', content)
+            if name_match and args_match:
+                try:
+                    args = json.loads(args_match.group(1))
+                    tool_calls.append(ToolCall(name=name_match.group(1), arguments=args))
+                except json.JSONDecodeError:
+                    pass
 
         return tool_calls
 
@@ -180,6 +239,7 @@ class AgentLoop:
 
         iteration = 0
         total_tool_calls = 0
+        all_tool_calls: list[ToolCall] = []
 
         while iteration < max_turns:
             iteration += 1
@@ -187,12 +247,20 @@ class AgentLoop:
             # Call LLM
             response = await self.provider.complete(provider_messages, model, config)
 
+            # Track usage
+            if response.usage:
+                self._last_usage = {
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+
             # Check for tool calls in response
             tool_calls = self._parse_tool_calls(response)
 
             if not tool_calls:
-                # No tool calls, return text response
-                return response.content, [], total_tool_calls
+                # No tool calls, return text response with all tool calls made
+                return response.content, all_tool_calls, total_tool_calls
 
             # Execute tools
             tool_results = []
@@ -200,6 +268,7 @@ class AgentLoop:
                 result = self._execute_tool(tc)
                 tool_results.append(result)
                 total_tool_calls += 1
+                all_tool_calls.append(tc)
 
             # Add assistant message with tool calls
             assistant_msg = Message(
@@ -217,7 +286,7 @@ class AgentLoop:
                 provider_messages.append(tool_msg)
 
         # Max turns reached
-        return f"Max turns ({max_turns}) reached. Last response: {response.content}", [], total_tool_calls
+        return f"Max turns ({max_turns}) reached. Last response: {response.content}", all_tool_calls, total_tool_calls
 
     def _convert_messages(self, yom_messages: list[YomMessage]) -> list[Message]:
         """Convert yom messages to provider messages."""

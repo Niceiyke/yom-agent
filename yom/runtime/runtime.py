@@ -119,7 +119,7 @@ class AgentRuntime:
 
         Returns the assistant's response text.
         """
-        raise NotImplementedError("Integration with current codebase pending")
+        raise NotImplementedError("Subclass must implement run_turn")
 
     async def run_prompt(
         self,
