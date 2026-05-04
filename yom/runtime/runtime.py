@@ -178,12 +178,11 @@ class AgentRuntime:
         self._runtime = None
 
 
-class StandaloneRuntime(AgentRuntime):
+class DefaultRuntime(AgentRuntime):
     """
-    Standalone AgentRuntime with real LLM calls and tool calling.
+    Default AgentRuntime with LLM calls and tool calling.
 
     Uses yom's provider system for LLM calls.
-    Does not depend on coding_agent.
     """
 
     def __init__(
@@ -295,8 +294,3 @@ class StandaloneRuntime(AgentRuntime):
             await self._hooks.emit("after_turn", state=state, iteration=iteration, response=response_content)
 
         return response_content
-
-
-def create_standalone_runtime(settings: RuntimeSettings) -> StandaloneRuntime:
-    """Create a standalone runtime for simple use cases."""
-    return StandaloneRuntime(deps=None, settings=settings)

@@ -11,7 +11,7 @@ from yom.runtime import (
     RuntimeDeps,
     SessionManager,
 )
-from yom.runtime.runtime import StandaloneRuntime
+from yom.runtime.runtime import DefaultRuntime
 from yom.tools import Tool, ToolResult, tool, ToolRegistry, CORE_TOOLS
 from yom.models import AgentState, Message, RuntimeRunResult
 from yom.session import SessionBackend, FileSessionBackend, InMemorySessionBackend
@@ -49,7 +49,7 @@ __all__ = [
     "Agent",
     # Runtime
     "AgentRuntime",
-    "StandaloneRuntime",
+    "DefaultRuntime",
     "DEFAULT_SYSTEM_PROMPT",
     "RuntimeSettings",
     "RuntimeDeps",
