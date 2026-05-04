@@ -208,8 +208,9 @@ class CoreRuntime(AgentRuntime):
     def _get_provider(self):
         """Get or create LLM provider."""
         if self._provider is None:
+            model = self._settings.default_model or DEFAULT_MODEL
             self._provider = create_provider(
-                model=self._settings.default_model,
+                model=model,
                 provider=self._settings.provider,
                 api_key=self._settings.api_key,
                 base_url=self._settings.base_url,
@@ -242,9 +243,7 @@ class CoreRuntime(AgentRuntime):
             await self._hooks.emit("before_turn", state=state, iteration=iteration)
 
         logger.info(
-            f"Turn {iteration} starting",
-            runtime_id=self._settings.runtime_id,
-            message_count=len(state.messages),
+            f"Turn {iteration} starting for runtime_id={self._settings.runtime_id}, message_count={len(state.messages)}"
         )
 
         messages_for_loop = state.messages
@@ -275,10 +274,7 @@ class CoreRuntime(AgentRuntime):
                 config=config,
             )
             logger.info(
-                f"Turn {iteration} completed",
-                runtime_id=self._settings.runtime_id,
-                tool_calls=tool_count,
-                response_length=len(response_content),
+                f"Turn {iteration} completed for runtime_id={self._settings.runtime_id}, tool_calls={tool_count}, response_length={len(response_content)}"
             )
         except Exception as e:
             logger.exception(f"Turn {iteration} failed: {e}")

@@ -23,11 +23,15 @@ from yom.tools import Tool
 @dataclass
 class ToolCall:
     """A tool call request from the LLM."""
-    name: str
-    arguments: dict[str, Any]
+    id: str | None = None
+    tool_call_id: str | None = None
+    name: str = ""
+    arguments: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
+            "id": self.id,
+            "tool_call_id": self.tool_call_id,
             "name": self.name,
             "arguments": self.arguments,
         }
@@ -86,9 +90,12 @@ class AgentLoop:
                 params = {"type": "object", "properties": {}}
 
             schema = {
-                "name": name,
-                "description": desc,
-                "parameters": params,
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": desc,
+                    "parameters": params,
+                },
             }
             schemas.append(schema)
         return schemas
@@ -107,9 +114,17 @@ class AgentLoop:
             for tc in raw.get("tool_calls", []):
                 if isinstance(tc, dict):
                     func = tc.get("function", tc)
+                    args = func.get("arguments", {})
+                    # Arguments may be a JSON string, parse if needed
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
                     tool_calls.append(ToolCall(
+                        tool_call_id=tc.get("id"),
                         name=func.get("name", ""),
-                        arguments=func.get("arguments", {}),
+                        arguments=args,
                     ))
             return tool_calls
 
@@ -170,7 +185,7 @@ class AgentLoop:
 
         return tool_calls
 
-    def _execute_tool(self, tool_call: ToolCall) -> ToolResult:
+    async def _execute_tool(self, tool_call: ToolCall) -> ToolResult:
         """Execute a single tool and return result."""
         tool_name = tool_call.name
 
@@ -198,7 +213,7 @@ class AgentLoop:
         try:
             result = execute_fn(**tool_call.arguments)
             if asyncio.iscoroutine(result):
-                result = asyncio.run(result)
+                result = await result
             if hasattr(result, "content"):
                 return ToolResult(name=tool_name, content=result.content)
             return ToolResult(name=tool_name, content=str(result))
@@ -256,7 +271,7 @@ class AgentLoop:
 
             tool_results = []
             for tc in tool_calls[:self.config.max_tool_calls]:
-                result = self._execute_tool(tc)
+                result = await self._execute_tool(tc)
                 tool_results.append(result)
                 total_tool_calls += 1
                 all_tool_calls.append(tc)
@@ -267,10 +282,28 @@ class AgentLoop:
             )
             provider_messages.append(assistant_msg)
 
-            for result in tool_results:
+            # Add tool_calls to assistant message if there were tool calls
+            if all_tool_calls:
+                tc_list = []
+                for tc in all_tool_calls:
+                    args = tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)
+                    tc_list.append({
+                        "id": tc.tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": args,
+                        }
+                    })
+                # Store tool_calls info for convert_messages to include
+                assistant_msg._tool_calls = tc_list
+
+            for result, tc in zip(tool_results, tool_calls):
                 tool_msg = Message(
                     role="tool",
                     content=json.dumps({"name": result.name, "result": result.content, "error": result.error}),
+                    tool_call_id=tc.tool_call_id,
+                    name=result.name,
                 )
                 provider_messages.append(tool_msg)
 

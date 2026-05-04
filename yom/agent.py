@@ -164,7 +164,7 @@ class Agent:
             session_backend=session_backend,
         )
 
-        self._runtime = build_runtime(settings, mode="standalone")
+        self._runtime = build_runtime(settings)
         return self._runtime
 
     @property

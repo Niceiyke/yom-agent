@@ -123,7 +123,7 @@ def create_provider(
         else:
             provider, inferred_base_url = infer_provider(model)
     else:
-        inferred_base_url = None
+        _, inferred_base_url = infer_provider(model) if model else (None, None)
 
     if api_key is None:
         api_key = get_api_key(provider, model)

@@ -41,13 +41,17 @@ class OpenAIProvider(BaseProvider):
         """Convert unified Message list to OpenAI format."""
         result = []
         for msg in messages:
-            if msg.role == "system":
-                continue
-            result.append({
+            msg_dict: dict[str, Any] = {
                 "role": msg.role,
                 "content": msg.content,
-            })
-        return result
+            }
+            if msg.role == "tool":
+                msg_dict["tool_call_id"] = getattr(msg, "tool_call_id", None)
+                msg_dict["name"] = getattr(msg, "name", None)
+            elif msg.role == "assistant" and hasattr(msg, "_tool_calls"):
+                msg_dict["tool_calls"] = msg._tool_calls
+            result.append(msg_dict)
+        return [m for m in result if m["role"] != "system" or "content" in m]
 
     def _get_api_key(self) -> str:
         api_key = self._api_key
@@ -100,11 +104,7 @@ class OpenAIProvider(BaseProvider):
         async def make_request():
             request_kwargs: dict[str, Any] = {
                 "model": model,
-                "messages": [
-                    {"role": "system", "content": msg.content} if msg.role == "system"
-                    else {"role": msg.role, "content": msg.content}
-                    for msg in messages
-                ],
+                "messages": self.convert_messages(messages),
                 "max_tokens": config.max_tokens,
             }
             if config.temperature:
@@ -136,6 +136,7 @@ class OpenAIProvider(BaseProvider):
             for tc in choice.message.tool_calls:
                 func = tc.function
                 tool_calls.append({
+                    "id": getattr(tc, "id", None),
                     "name": func.name,
                     "arguments": func.arguments,
                 })

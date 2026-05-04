@@ -50,9 +50,17 @@ class Message:
     """Unified message format."""
     role: str
     content: str
+    tool_call_id: str | None = None
+    name: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"role": self.role, "content": self.content}
+        result = {"role": self.role, "content": self.content}
+        if self.role == "tool":
+            if self.tool_call_id:
+                result["tool_call_id"] = self.tool_call_id
+            if self.name:
+                result["name"] = self.name
+        return result
 
 
 class BaseProvider(ABC):

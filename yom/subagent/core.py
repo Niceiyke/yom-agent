@@ -366,7 +366,7 @@ class SubAgentManager:
                 tools=sub_tools,
                 default_model=agent_def.model or request.model,
             )
-            runtime = build_runtime(settings, mode="yom_agent")
+            runtime = build_runtime(settings)
             result = await runtime.run_prompt(prompt=request.task)
             return result.final_message or result.error or ""
 
