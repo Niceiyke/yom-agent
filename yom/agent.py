@@ -1,0 +1,256 @@
+"""Simple Agent API for building AI agents."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable
+
+from yom.runtime.config import RuntimeSettings
+from yom.runtime.factories import build_runtime
+from yom.tools import CORE_TOOLS
+from yom.models import RuntimeRunResult
+from yom.session import FileSessionBackend, InMemorySessionBackend
+from yom.subagent import (
+    SubAgentManager,
+    SubAgentRegistry,
+    SubAgentDefinition,
+    get_default_manager,
+    create_spawn_tool,
+    create_catalog_tool,
+)
+
+Tool = Callable
+
+DEFAULT_SESSION_DIR = ".yom/sessions"
+DEFAULT_AGENTS_DIR = ".yom/agents"
+
+
+@dataclass
+class Agent:
+    """
+    Simple API for building AI agents.
+
+    Example:
+        from yom import Agent
+
+        agent = Agent(
+            system_prompt="You are helpful",
+            tools=["core"]  # includes read, write, edit, bash, cmd
+        )
+
+        result = await agent.run("Read /tmp/test.txt")
+        print(result)
+
+    With session persistence:
+        agent = Agent(session_id="user-123", tools=["core"])
+        await agent.run("My name is John")
+        # ... later ...
+        await agent.run("What is my name?")  # knows "John"
+
+    With sub-agents from markdown files:
+        agent = Agent(agents_dir=".yom/agents", tools=["core", "spawn"])
+        # Loads .yom/agents/*.md files
+        # LLM sees catalog at start, full prompt loaded on spawn
+        await agent.run("Review /tmp/code.py")
+
+    Manual sub-agent registration:
+        agent = Agent(tools=["core", "spawn"])
+        agent.register_subagent(
+            name="reviewer",
+            description="Reviews code for bugs",
+            system_prompt="You are a code reviewer...",
+            tools=["core"]
+        )
+    """
+
+    system_prompt: str = "You are helpful. Use tools when needed."
+    tools: list[str | Tool] = field(default_factory=lambda: ["core"])
+    runtime_id: str = "agent"
+    model: str | None = None
+
+    # Session support
+    session_id: str | None = None
+    session_backend: str | None = None
+    session_dir: Path | str | None = None
+
+    # Sub-agent support
+    agents_dir: Path | str | None = None  # Directory containing *.md agent files
+    enable_spawn: bool = True
+    max_subagent_depth: int = 4
+
+    def __post_init__(self):
+        self._session = None
+        self._runtime = None
+        self._subagent_manager = None
+
+        # Initialize sub-agent manager
+        self._init_subagent_manager()
+
+        self._resolved_tools = self._resolve_tools()
+
+    def _init_subagent_manager(self) -> None:
+        """Initialize sub-agent manager and load agents from directory if specified."""
+        self._subagent_manager = SubAgentManager(max_depth=self.max_subagent_depth)
+
+        if self.agents_dir:
+            self._subagent_manager.registry.load_from_directory(self.agents_dir)
+
+    def _resolve_tools(self) -> list[Tool]:
+        """Resolve tool specs to actual tools."""
+        resolved = []
+        for tool in self.tools:
+            if tool == "core":
+                resolved.extend(CORE_TOOLS)
+            elif tool == "spawn":
+                if self.enable_spawn and self._subagent_manager:
+                    spawn_tool = create_spawn_tool(self._subagent_manager)
+                    resolved.append(spawn_tool)
+                    # Also add catalog tool so LLM knows available agents
+                    catalog_tool = create_catalog_tool(self._subagent_manager)
+                    resolved.append(catalog_tool)
+            elif callable(tool):
+                resolved.append(tool)
+            elif isinstance(tool, str):
+                found = False
+                for t in CORE_TOOLS:
+                    name = getattr(t, "_tool_name", None) or getattr(t, "name", None)
+                    if name == tool:
+                        resolved.append(t)
+                        found = True
+                        break
+                if not found:
+                    raise ValueError(f"Unknown tool: {tool}")
+            else:
+                raise TypeError(f"Invalid tool type: {type(tool)}")
+        return resolved
+
+    def _get_system_prompt_with_catalog(self) -> str:
+        """Get system prompt with sub-agent catalog appended."""
+        prompt = self.system_prompt
+        if self._subagent_manager and self.enable_spawn:
+            catalog_text = self._subagent_manager.registry.get_catalog_text()
+            if catalog_text != "No sub-agents available.":
+                prompt = f"{prompt}\n\n{catalog_text}\n\nWhen you need specialized help, use spawn_agent to call a sub-agent."
+        return prompt
+
+    def _get_session_backend(self):
+        """Get or create session backend."""
+        if self.session_backend == "file":
+            if self.session_dir:
+                base_dir = Path(self.session_dir) / DEFAULT_SESSION_DIR / self.runtime_id
+            else:
+                base_dir = Path.cwd() / DEFAULT_SESSION_DIR / self.runtime_id
+            return FileSessionBackend(base_dir=base_dir)
+        elif self.session_backend == "memory":
+            return InMemorySessionBackend()
+        return None
+
+    async def _get_runtime(self):
+        """Get or create runtime with session support."""
+        if self._runtime is not None:
+            return self._runtime
+
+        session_backend = self._get_session_backend()
+
+        settings = RuntimeSettings(
+            runtime_id=self.runtime_id,
+            system_prompt=self._get_system_prompt_with_catalog(),
+            tools=self._resolved_tools,
+            default_model=self.model,
+            api_key=os.environ.get("MINIMAX_API_KEY") or os.environ.get("OPENAI_API_KEY"),
+            session_backend=session_backend,
+        )
+
+        self._runtime = build_runtime(settings, mode="standalone")
+        return self._runtime
+
+    @property
+    def available_tools(self) -> list[str]:
+        """List available tool names."""
+        return [getattr(t, "_tool_name", None) or getattr(t, "name", None) or str(t) for t in self._resolved_tools]
+
+    def run_sync(self, prompt: str) -> str:
+        """Run a prompt synchronously."""
+        return asyncio.run(self.run(prompt))
+
+    async def run(self, prompt: str) -> str:
+        """Run a prompt through the agent."""
+        runtime = await self._get_runtime()
+
+        session_id = self.session_id
+        if session_id is None:
+            import uuid
+            session_id = str(uuid.uuid4())
+            self.session_id = session_id
+
+        result = await runtime.run_prompt(prompt=prompt, session_id=session_id)
+        return result.final_message
+
+    async def run_stream(self, prompt: str):
+        """Run a prompt with streaming responses."""
+        result = await self.run(prompt)
+        yield result
+
+    def clear_session(self) -> None:
+        """Clear the current session."""
+        self.session_id = None
+        self._runtime = None
+
+    async def get_session_messages(self) -> list[dict]:
+        """Get all messages in current session."""
+        if not self.session_id:
+            return []
+        runtime = await self._get_runtime()
+        state = await runtime._settings.session_backend.load(self.session_id)
+        if state:
+            return [{"role": m.role.value, "content": m.content} for m in state.messages]
+        return []
+
+    def tool(self, name: str | None = None, description: str | None = None):
+        """Decorator to add a custom tool."""
+        from yom.tools import tool as yom_tool
+        return yom_tool(name=name, description=description)
+
+    def add_tool(self, func: Callable) -> Callable:
+        """Add a tool function directly."""
+        self._resolved_tools.append(func)
+        return func
+
+    def register_subagent(
+        self,
+        name: str,
+        description: str = "",
+        system_prompt: str = "",
+        tools: list[str] | None = None,
+        model: str | None = None,
+    ) -> None:
+        """Register a sub-agent that can be spawned.
+
+        Example:
+            agent.register_subagent(
+                name="reviewer",
+                description="Reviews code for bugs",
+                system_prompt="You are a code reviewer. Analyze code...",
+                tools=["core"]
+            )
+        """
+        if self._subagent_manager is None:
+            self._subagent_manager = SubAgentManager(max_depth=self.max_subagent_depth)
+
+        self._subagent_manager.registry.register(SubAgentDefinition(
+            name=name,
+            description=description,
+            tools=tools,
+            model=model,
+            prompt=system_prompt,
+            path=None,
+        ))
+
+    def list_subagents(self) -> list[str]:
+        """List available sub-agent types."""
+        if self._subagent_manager is None:
+            return []
+        return self._subagent_manager.registry.list_agents()
