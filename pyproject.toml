@@ -1,12 +1,26 @@
 [project]
 name = "yom"
 version = "0.1.0"
-description = "Configurable, installable agent runtime"
+description = "Configurable, installable agent runtime for building AI agents"
 readme = "README.md"
 requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "yom team"}
+]
+keywords = ["ai", "agent", "llm", "openai", "anthropic", "minimax"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "click>=8.3.3",
-    "openai>=2.33.0",
+    "openai>=1.0.0",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
     "tiktoken>=0.7.0",
@@ -14,12 +28,31 @@ dependencies = [
     "google-genai>=0.3.0",
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.18.0"]
+google = ["google-genai>=0.3.0"]
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/your-org/yom"
+Repository = "https://github.com/your-org/yom"
+Issues = "https://github.com/your-org/yom/issues"
+
+[project.scripts]
+yom = "yom.cli:main"
+
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["yom*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
