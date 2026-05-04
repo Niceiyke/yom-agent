@@ -1,9 +1,9 @@
-"""Runtime module exports."""
+"""Runtime module exports - re-exports from top-level modules for backward compatibility."""
 
-from yom.runtime.config import ModelConfig, PromptTemplate, RuntimeSettings
-from yom.runtime.runtime import AgentRuntime, DEFAULT_SYSTEM_PROMPT
-from yom.runtime.deps import RuntimeDeps, SessionManager
-from yom.runtime.factories import build_runtime, build_runtime_from_yaml, build_runtime_from_env
+from yom.config import ModelConfig, PromptTemplate, RuntimeSettings
+from yom.agent_runtime import AgentRuntime, DEFAULT_SYSTEM_PROMPT
+from yom.deps import RuntimeDeps, SessionManager
+from yom.factories import build_runtime, build_runtime_from_yaml, build_runtime_from_env
 from yom.session import SessionBackend, FileSessionBackend, InMemorySessionBackend
 
 __all__ = [

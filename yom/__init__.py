@@ -1,17 +1,10 @@
 """yom: Configurable, installable agent runtime."""
 
 from yom.agent import Agent
-from yom.runtime import (
-    AgentRuntime,
-    RuntimeSettings,
-    DEFAULT_SYSTEM_PROMPT,
-    build_runtime,
-    build_runtime_from_yaml,
-    build_runtime_from_env,
-    RuntimeDeps,
-    SessionManager,
-)
-from yom.runtime.runtime import CoreRuntime
+from yom.agent_runtime import AgentRuntime, CoreRuntime, DEFAULT_SYSTEM_PROMPT
+from yom.config import RuntimeSettings
+from yom.deps import RuntimeDeps, SessionManager
+from yom.factories import build_runtime, build_runtime_from_yaml, build_runtime_from_env
 from yom.tools import Tool, ToolResult, tool, ToolRegistry, CORE_TOOLS
 from yom.models import AgentState, Message, RuntimeRunResult
 from yom.session import SessionBackend, FileSessionBackend, InMemorySessionBackend

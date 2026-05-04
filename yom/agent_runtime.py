@@ -9,8 +9,8 @@ import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
 from yom.models import AgentState, RuntimeRunResult
-from yom.runtime.config import RuntimeSettings
-from yom.runtime.deps import RuntimeDeps
+from yom.config import RuntimeSettings
+from yom.deps import RuntimeDeps
 from yom.tools.result import ToolResult
 from yom.providers import create_provider, CompletionConfig
 

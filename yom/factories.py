@@ -9,9 +9,9 @@ from typing import Any
 import yaml
 
 from yom.models import AgentState
-from yom.runtime.config import RuntimeSettings
-from yom.runtime.deps import RuntimeDeps
-from yom.runtime.runtime import AgentRuntime, CoreRuntime
+from yom.config import RuntimeSettings
+from yom.deps import RuntimeDeps
+from yom.agent_runtime import AgentRuntime, CoreRuntime
 from yom.session import FileSessionBackend, InMemorySessionBackend
 from yom.context import ContextConfig, ContextManager, create_token_counter
 from yom.logging_config import setup_logging

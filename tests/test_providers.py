@@ -53,15 +53,18 @@ class TestOpenAIProvider:
         assert client1 is client2
 
     def test_convert_messages(self):
-        """Test message conversion removes system messages."""
+        """Test message conversion."""
         messages = [
             Message(role="system", content="You are helpful"),
             Message(role="user", content="Hello"),
         ]
         provider = OpenAIProvider()
         result = provider.convert_messages(messages)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
+        assert len(result) == 2
+        assert result[0]["role"] == "system"
+        assert result[0]["content"] == "You are helpful"
+        assert result[1]["role"] == "user"
+        assert result[1]["content"] == "Hello"
 
     @pytest.mark.asyncio
     async def test_complete_raises_on_empty_choices(self):

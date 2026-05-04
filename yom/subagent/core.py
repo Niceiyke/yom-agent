@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from yom.models import AgentState
-from yom.runtime.config import RuntimeSettings
-from yom.runtime.factories import build_runtime
+from yom.config import RuntimeSettings
+from yom.factories import build_runtime
 
 
 PROMPT_INJECTION_PATTERNS = [

@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from yom.runtime.config import RuntimeSettings
-from yom.runtime.factories import build_runtime
+from yom.config import RuntimeSettings
+from yom.factories import build_runtime
 from yom.tools import CORE_TOOLS
 from yom.models import RuntimeRunResult
 from yom.session import FileSessionBackend, InMemorySessionBackend

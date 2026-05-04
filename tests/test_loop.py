@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -127,8 +128,14 @@ class TestAgentLoop:
         mock_provider = MagicMock()
         mock_provider.complete = AsyncMock(side_effect=[
             LLMResponse(
-                content='{"tool_calls": [{"name": "tool", "arguments": {"n": i}} for i in range(25)]}',
+                content="",
                 model="gpt-4",
+                raw={
+                    "tool_calls": [
+                        {"id": f"call_{i}", "function": {"name": "tool", "arguments": json.dumps({"n": i})}}
+                        for i in range(25)
+                    ]
+                },
             ),
             LLMResponse(content="Done", model="gpt-4"),
         ])

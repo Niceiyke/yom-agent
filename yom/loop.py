@@ -29,12 +29,15 @@ class ToolCall:
     arguments: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "tool_call_id": self.tool_call_id,
+        result = {
             "name": self.name,
             "arguments": self.arguments,
         }
+        if self.id is not None:
+            result["id"] = self.id
+        if self.tool_call_id is not None:
+            result["tool_call_id"] = self.tool_call_id
+        return result
 
 
 @dataclass

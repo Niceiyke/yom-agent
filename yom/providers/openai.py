@@ -51,7 +51,7 @@ class OpenAIProvider(BaseProvider):
             elif msg.role == "assistant" and hasattr(msg, "_tool_calls"):
                 msg_dict["tool_calls"] = msg._tool_calls
             result.append(msg_dict)
-        return [m for m in result if m["role"] != "system" or "content" in m]
+        return result
 
     def _get_api_key(self) -> str:
         api_key = self._api_key
