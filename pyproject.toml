@@ -41,6 +41,7 @@ dev = [
 Homepage = "https://github.com/your-org/yom"
 Repository = "https://github.com/your-org/yom"
 Issues = "https://github.com/your-org/yom/issues"
+Changelog = "https://github.com/your-org/yom/releases"
 
 [project.scripts]
 yom = "yom.cli:main"

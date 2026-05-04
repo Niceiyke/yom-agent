@@ -1,9 +1,13 @@
+# Build artifacts (generated on release, download from GitHub)
+dist/
+build/
+*.whl
+*.tar.gz
+
 # Python
 __pycache__/
 *.py[cod]
 *.so
-build/
-dist/
 wheels/
 *.egg-info/
 *.egg
