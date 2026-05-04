@@ -38,10 +38,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/yom"
-Repository = "https://github.com/your-org/yom"
-Issues = "https://github.com/your-org/yom/issues"
-Changelog = "https://github.com/your-org/yom/releases"
+Homepage = "https://github.com/niceiyke/yom"
+Repository = "https://github.com/niceiyke/yom"
+Issues = "https://github.com/niceiyke/yom/issues"
+Changelog = "https://github.com/niceiyke/yom/releases"
 
 [project.scripts]
 yom = "yom.cli:main"
