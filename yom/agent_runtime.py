@@ -271,10 +271,12 @@ class CoreRuntime(AgentRuntime):
         config_obj.max_turns = self._settings.max_turns
 
         try:
+            system_prompt = state.metadata.get("system_prompt")
             response_content, tool_calls, tool_count = await loop.run_turn(
                 messages=messages_for_loop,
                 model=model,
                 config=config,
+                system_prompt=system_prompt,
             )
             logger.info(
                 f"Turn {iteration} completed for runtime_id={self._settings.runtime_id}, tool_calls={tool_count}, response_length={len(response_content)}"

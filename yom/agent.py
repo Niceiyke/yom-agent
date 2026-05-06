@@ -170,7 +170,8 @@ class Agent:
             else:
                 base_dir = Path.cwd() / DEFAULT_SESSION_DIR / self.runtime_id
             return FileSessionBackend(base_dir=base_dir)
-        elif self.session_backend == "memory":
+        elif self.session_backend == "memory" or self.session_backend is None:
+            # Default to memory backend for session persistence
             return InMemorySessionBackend()
         return None
 

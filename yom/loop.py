@@ -229,6 +229,7 @@ class AgentLoop:
         model: str,
         config: CompletionConfig | None = None,
         max_turns: int | None = None,
+        system_prompt: str | None = None,
     ) -> tuple[str, list[ToolCall], int]:
         """Run a single turn with tool calling.
 
@@ -244,12 +245,12 @@ class AgentLoop:
         provider_messages = self._convert_messages(messages)
 
         tool_schemas = self._get_tool_schemas()
-        if tool_schemas:
-            system_content = "You are a helpful assistant with access to tools. Use them as needed."
-            provider_messages.insert(0, Message(role="system", content=system_content))
+        if system_prompt:
+            provider_messages.insert(0, Message(role="system", content=system_prompt))
+        elif tool_schemas:
+            provider_messages.insert(0, Message(role="system", content="You are a helpful assistant with access to tools. Use them as needed."))
         else:
-            system_content = "You are a helpful assistant."
-            provider_messages.insert(0, Message(role="system", content=system_content))
+            provider_messages.insert(0, Message(role="system", content="You are a helpful assistant."))
 
         iteration = 0
         total_tool_calls = 0
