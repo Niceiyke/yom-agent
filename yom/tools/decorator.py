@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from functools import wraps
-from typing import Any, Callable, TypeVar, overload
+from typing import Callable, TypeVar, overload
 
 from yom.tools.result import ToolResult
 
@@ -63,13 +63,15 @@ class ToolDecorator:
         params = self._build_parameters(func)
 
         wrapper = async_wrapper if is_async else sync_wrapper
-        wrapper._tool_name = self.name or func.__name__
-        wrapper._tool_description = desc
-        wrapper._tool_parameters = params
-        wrapper._tool_func = func
-        wrapper._tool_schema_version = "1.0"
+        # These attributes are set dynamically for tool registration
+        # mypy doesn't understand functools.wraps type inference
+        wrapper._tool_name = self.name or func.__name__  # type: ignore[attr-defined]
+        wrapper._tool_description = desc  # type: ignore[attr-defined]
+        wrapper._tool_parameters = params  # type: ignore[attr-defined]
+        wrapper._tool_func = func  # type: ignore[attr-defined]
+        wrapper._tool_schema_version = "1.0"  # type: ignore[attr-defined]
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]
 
     def _build_parameters(self, func: Callable) -> dict:
         """Build parameters schema, using explicit schema if provided."""

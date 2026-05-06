@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import logging
 import uuid
@@ -16,6 +15,7 @@ from yom.providers import create_provider, CompletionConfig
 
 if TYPE_CHECKING:
     from yom.tools import Tool
+    from yom.providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ DEFAULT_MODEL = "MiniMax-M2.7"
 
 
 def _get_tool_name(tool: Any) -> str:
-    return getattr(tool, "_tool_name", None) or getattr(tool, "name", None) or getattr(tool, "__name__", "unknown")
+    return str(getattr(tool, "_tool_name", None) or getattr(tool, "name", None) or getattr(tool, "__name__", "unknown"))
 
 
 def _get_tool_execute(tool: Any) -> Callable:
@@ -51,9 +51,13 @@ class AgentRuntime:
     """
     Main orchestrator for agent execution.
 
+
     Owns dependency graph, creates/loads agent state, runs agent loop,
     and coordinates sessions/events/hooks/sub-agents.
     """
+
+    _provider: BaseProvider | None = None
+    _runtime: CoreRuntime | None = None
 
     def __init__(
         self,
@@ -126,7 +130,6 @@ class AgentRuntime:
 
     async def run_prompt(
         self,
-        *,
         prompt: str,
         session_id: str | None = None,
     ) -> RuntimeRunResult:

@@ -39,6 +39,13 @@ from yom.providers.factory import (
     get_api_key,
     infer_provider,
 )
+from yom.providers.local import (
+    OllamaProvider,
+    LMStudioProvider,
+    OllamaLocalProvider,
+    create_local_provider,
+)
+from yom.providers.nvidia import NVIDIAProvider
 
 __all__ = [
     # Types
@@ -48,10 +55,16 @@ __all__ = [
     "Message",
     "StreamChunk",
     "Usage",
-    # Providers
+    # Cloud Providers
     "AnthropicProvider",
     "GoogleProvider",
     "OpenAIProvider",
+    "NVIDIAProvider",
+    # Local Providers
+    "OllamaProvider",
+    "LMStudioProvider",
+    "OllamaLocalProvider",
+    "create_local_provider",
     # Factory
     "ProviderFactory",
     "create_provider",

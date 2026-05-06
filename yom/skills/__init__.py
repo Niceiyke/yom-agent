@@ -1,5 +1,9 @@
 """Skills system for yom."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from yom.skills.core import (
     Skill,
     LoadedSkills,

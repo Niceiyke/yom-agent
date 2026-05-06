@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import AsyncIterator
 
 from yom.providers.anthropic import AnthropicProvider
 from yom.providers.base import BaseProvider, CompletionConfig, LLMResponse, Message, StreamChunk
@@ -193,7 +193,7 @@ class ProviderFactory:
         provider: str | None = None,
         api_key: str | None = None,
         base_url: str | None = None,
-    ) -> StreamChunk:
+    ) -> AsyncIterator[StreamChunk]:
         """Create provider and stream."""
         p = self.create(model=model, provider=provider, api_key=api_key, base_url=base_url)
-        return p.stream(messages, model=model or self.default_model or "", config=config)
+        return p.stream(messages, model=model or self.default_model or "", config=config)  # type: ignore[return-value]

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from yom.context.tokenizer import TokenCounter, create_token_counter
 
@@ -68,18 +68,8 @@ class ContextManager:
 
     @property
     def max_tokens(self) -> int:
-        """Get max tokens limit."""
+        """"Get max tokens limit."""
         return self.config.max_tokens
-
-    @property
-    def stats(self) -> ContextStats:
-        """Get current context stats."""
-        return ContextStats(
-            total_tokens=0,
-            max_tokens=self.config.max_tokens,
-            message_count=0,
-            utilization_pct=0.0,
-        )
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in text."""
@@ -125,7 +115,7 @@ class ContextManager:
         max_tokens: int,
     ) -> list[dict]:
         """Truncate from the front, keeping most recent messages."""
-        result = []
+        result: list[dict] = []
         total_tokens = 0
 
         for msg in reversed(messages):

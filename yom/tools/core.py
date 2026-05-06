@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import glob as glob_module
-import os
+
 import re
 import shlex
 from pathlib import Path
@@ -12,7 +12,7 @@ from typing import Any
 
 from yom.tools import tool
 
-ALLOWED_DIRS = {"~": Path.home()}
+ALLOWED_DIRS = {"~": Path.home(), "/tmp": Path("/tmp")}
 ALLOWED_COMMANDS: list[str] | None = None
 
 
@@ -31,10 +31,11 @@ def _validate_path(path: str, base_dir: str = "~") -> Path | str:
         for allowed_base in ALLOWED_DIRS.values():
             if str(abs_path).startswith(str(allowed_base)):
                 return abs_path
-        if path.startswith("/etc/") or path.startswith("/sys/") or path.startswith("/proc/"):
-            return f"Error: Path '{path}' is in a protected directory"
-        if abs_path.is_relative_to(Path("/etc")) or abs_path.is_relative_to(Path("/sys")) or abs_path.is_relative_to(Path("/proc")):
-            return f"Error: Path '{path}' is in a protected directory"
+        # Check protected directories
+        protected = {"/etc", "/sys", "/proc"}
+        for prot in protected:
+            if abs_path.is_relative_to(Path(prot)):
+                return f"Error: Path '{path}' is in a protected directory"
         return f"Error: Path '{path}' escapes allowed directory '{base_dir}'"
     return abs_path
 
@@ -239,34 +240,7 @@ async def cmd(command: str, timeout: int = 30) -> str:
         return f"Error executing command: {e}"
 
 
-@tool(
-    name="grep",
-    description="Search for pattern in files. Returns matching lines with context.",
-    schema={
-        "type": "object",
-        "properties": {
-            "pattern": {
-                "type": "string",
-                "description": "Regex pattern to search for",
-            },
-            "path": {
-                "type": "string",
-                "description": "Directory or file path to search in",
-            },
-            "recursive": {
-                "type": "boolean",
-                "description": "Search recursively in subdirectories",
-                "default": True,
-            },
-            "file_pattern": {
-                "type": "string",
-                "description": "Glob pattern for files to include (e.g., '*.py')",
-                "default": "*",
-            },
-        },
-        "required": ["pattern", "path"],
-    },
-)
+@tool(name="grep", description="Search for pattern in files. Returns matching lines with context.")
 def grep_files(
     pattern: str,
     path: str = ".",

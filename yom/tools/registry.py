@@ -60,9 +60,9 @@ class ToolRegistry:
             schema: JSON schema for parameters
         """
         if not hasattr(func, "_tool_name"):
-            func._tool_name = name
+            func._tool_name = name  # type: ignore[attr-defined]
         if not hasattr(func, "_tool_parameters"):
-            func._tool_parameters = schema
+            func._tool_parameters = schema  # type: ignore[attr-defined]
         self._tools[name] = func
         self._schemas[name] = schema
 
@@ -77,8 +77,8 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def list(self) -> list[Tool | Callable]:
-        """List all registered tools."""
-        return list(self._tools.values())
+        """"List all registered tools."""
+        return list(self._tools.values()) # type: ignore[return-value]
 
     def list_names(self) -> list[str]:
         """List all tool names."""
@@ -103,21 +103,22 @@ class ToolRegistry:
         """Execute a tool by name."""
         tool = self.get(name)
         if not tool:
-            return ToolResult.failure(tool_name=name, error=f"Tool not found: {name}")
+            return ToolResult.from_failure(tool_name=name, error=f"Tool not found: {name}")
 
         try:
-            execute_fn = getattr(tool, "execute", None) or tool
+            execute_fn = getattr(tool, "execute", None) or tool  # type: ignore[operator]
             result = execute_fn(**kwargs)
             if hasattr(result, "__await__"):
                 result = await result
             if isinstance(result, ToolResult):
                 return result
-            return ToolResult.success(tool_name=name, content=str(result))
+            return ToolResult.from_success(tool_name=name, content=str(result))
         except TypeError as e:
-            return ToolResult.failure(tool_name=name, error=f"Invalid arguments: {e}")
+            return ToolResult.from_failure(tool_name=name, error=f"Invalid arguments: {e}")
         except Exception as e:
             logger.exception(f"Tool execution failed: {name}")
-            return ToolResult.failure(tool_name=name, error=str(e))
+            return ToolResult.from_failure(tool_name=name, error=str(e))
+
 
     def clear(self) -> None:
         """Clear all tools."""

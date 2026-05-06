@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from yom.models import AgentState
     from yom.session.backends import SessionBackend
     from yom.tools import Tool
-    from yom.tools.protocol import EventHook
     from yom.context import ContextConfig
+
+
+# EventHook type - placeholder for hook types
+EventHook = Any  # type: ignore[misc]
 
 
 @dataclass
@@ -101,15 +101,36 @@ class RuntimeSettings:
         if self.system_prompt is None:
             raise ValueError("system_prompt is required")
 
+
         if self.allowed_models and self.default_model:
             if self.default_model not in self.allowed_models:
                 raise ValueError(
                     f"default_model '{self.default_model}' not in allowed_models"
                 )
 
+        # Resolve "core" string to actual tools
+        from yom.tools.core import CORE_TOOLS
+        resolved_tools = []
         for tool in self.tools:
-            if not hasattr(tool, "name") and not callable(tool):
+            if isinstance(tool, str):
+                if tool == "core":
+                    resolved_tools.extend(CORE_TOOLS)
+                else:
+                    # Try to find by name
+                    found = False
+                    for t in CORE_TOOLS:
+                        if getattr(t, "_tool_name", None) == tool:
+                            resolved_tools.append(t)
+                            found = True
+                            break
+                    if not found:
+                        raise ValueError(f"Unknown tool: {tool}")
+            elif hasattr(tool, "name") or callable(tool):
+                resolved_tools.append(tool)
+            else:
                 raise ValueError(f"Invalid tool: {tool}")
+
+        self.tools = resolved_tools
 
         if self.max_context_tokens is not None and self.max_context_tokens <= 0:
             raise ValueError("max_context_tokens must be positive")

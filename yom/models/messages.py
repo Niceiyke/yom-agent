@@ -47,11 +47,18 @@ class Message:
             MessageRole.TOOL: ToolMessage,
         }
         msg_cls = cls_map.get(role, Message)
-        return msg_cls(
-            content=data["content"],
-            timestamp=datetime.fromisoformat(data.get("timestamp", _now().isoformat())),
-            metadata=data.get("metadata", {}),
-        )
+
+        msg_kwargs = {
+            "content": data["content"],
+            "timestamp": datetime.fromisoformat(data.get("timestamp", _now().isoformat())),
+            "metadata": data.get("metadata", {}),
+        }
+
+        # Assistant message needs tool_calls
+        if role == MessageRole.ASSISTANT:
+            msg_kwargs["tool_calls"] = data.get("tool_calls", [])
+
+        return msg_cls(**msg_kwargs)
 
 
 @dataclass
@@ -59,17 +66,11 @@ class SystemMessage(Message):
     """System message (e.g., system prompt)."""
     role: MessageRole = field(default=MessageRole.SYSTEM, init=False)
 
-    def __post_init__(self):
-        self.role = MessageRole.SYSTEM
-
 
 @dataclass
 class UserMessage(Message):
     """User message."""
     role: MessageRole = field(default=MessageRole.USER, init=False)
-
-    def __post_init__(self):
-        self.role = MessageRole.USER
 
 
 @dataclass
@@ -77,9 +78,6 @@ class AssistantMessage(Message):
     """Assistant message, may include tool calls."""
     role: MessageRole = field(default=MessageRole.ASSISTANT, init=False)
     tool_calls: list[dict] = field(default_factory=list)
-
-    def __post_init__(self):
-        self.role = MessageRole.ASSISTANT
 
     def to_dict(self) -> dict:
         d = super().to_dict()
@@ -102,9 +100,6 @@ class ToolMessage(Message):
     role: MessageRole = field(default=MessageRole.TOOL, init=False)
     tool_name: str = ""
     tool_call_id: str | None = None
-
-    def __post_init__(self):
-        self.role = MessageRole.TOOL
 
     def to_dict(self) -> dict:
         d = super().to_dict()

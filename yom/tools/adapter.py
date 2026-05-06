@@ -16,16 +16,22 @@ class ToolAdapter:
 
     @property
     def name(self) -> str:
-        return getattr(self._tool, "name", None) or getattr(self._tool, "_tool_name", "")
+        name = getattr(self._tool, "name", None)
+        if name is not None:
+            return name
+        return getattr(self._tool, "_tool_name", "")
 
     @property
     def schema(self) -> dict[str, Any]:
-        return getattr(self._tool, "_tool_parameters", None) or getattr(self._tool, "parameters", {})
+        schema = getattr(self._tool, "_tool_parameters", None)
+        if schema is not None:
+            return schema
+        return getattr(self._tool, "parameters", {})
 
     async def execute(self, input: dict[str, Any], state: Any) -> str:
         """Execute the tool and return string result."""
         tool = self._tool
-        execute_fn = getattr(tool, "execute", None) or tool
+        execute_fn = getattr(tool, "execute", None) or tool  # type: ignore[operator]
 
         try:
             result = execute_fn(**input)

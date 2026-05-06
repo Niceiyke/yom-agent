@@ -1,4 +1,8 @@
-"""yom: Configurable, installable agent runtime."""
+"""yom: Configurable, installable agent runtime.
+
+Open source agent framework with tool calling, session management,
+multi-provider LLM support, and plugin system.
+"""
 
 from yom.agent import Agent
 from yom.agent_runtime import AgentRuntime, CoreRuntime, DEFAULT_SYSTEM_PROMPT
@@ -22,7 +26,6 @@ from yom.context import (
 from yom.providers import (
     LLMResponse,
     CompletionConfig,
-    Message,
     StreamChunk,
     Usage,
     BaseProvider,
@@ -33,17 +36,67 @@ from yom.providers import (
     AnthropicProvider,
     OpenAIProvider,
     GoogleProvider,
+    OllamaProvider,
+    LMStudioProvider,
+    create_local_provider,
+)
+from yom.plugins import (
+    Plugin,
+    ToolPlugin,
+    ProviderPlugin,
+    MiddlewarePlugin,
+    PluginManager,
+    PluginDiscovery,
+    HotReloader,
+    ToolVersionRegistry,
+    Container,
+    YomApp,
+)
+from yom.debug import (
+    DEBUG,
+    TRACE,
+    enable_debug,
+    enable_trace,
+    disable_debug,
+    trace,
+    debug,
+    get_recorder,
+    inspect_state,
+    format_trace_html,
+)
+from yom.testing import (
+    MockProvider,
+    fake_agent,
+    assert_response,
+    assert_tool_calls,
+    run_test_suite,
+)
+from yom.toolsets import (
+    http_request,
+    get_json,
+    query_db,
+    db_schema,
+    github_api,
+    github_read_file,
+    github_search,
+    s3_put,
+    s3_get,
+    s3_list,
+    shell,
+    shell_script,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
-    # Agent
+    # Version
+    "__version__",
+    # Core Agent
     "Agent",
-    # Runtime
     "AgentRuntime",
     "CoreRuntime",
     "DEFAULT_SYSTEM_PROMPT",
+    # Configuration
     "RuntimeSettings",
     "RuntimeDeps",
     "SessionManager",
@@ -56,6 +109,19 @@ __all__ = [
     "ToolRegistry",
     "tool",
     "CORE_TOOLS",
+    # Built-in Toolsets
+    "http_request",
+    "get_json",
+    "query_db",
+    "db_schema",
+    "github_api",
+    "github_read_file",
+    "github_search",
+    "s3_put",
+    "s3_get",
+    "s3_list",
+    "shell",
+    "shell_script",
     # Models
     "AgentState",
     "Message",
@@ -93,11 +159,42 @@ __all__ = [
     "BaseProvider",
     "ProviderFactory",
     "create_provider",
+    "create_local_provider",
     "infer_provider",
     "get_api_key",
     "AnthropicProvider",
     "OpenAIProvider",
     "GoogleProvider",
+    "OllamaProvider",
+    "LMStudioProvider",
+    # Plugin System
+    "Plugin",
+    "ToolPlugin",
+    "ProviderPlugin",
+    "MiddlewarePlugin",
+    "PluginManager",
+    "PluginDiscovery",
+    "HotReloader",
+    "ToolVersionRegistry",
+    "Container",
+    "YomApp",
+    # Debug
+    "DEBUG",
+    "TRACE",
+    "enable_debug",
+    "enable_trace",
+    "disable_debug",
+    "trace",
+    "debug",
+    "get_recorder",
+    "inspect_state",
+    "format_trace_html",
+    # Testing
+    "MockProvider",
+    "fake_agent",
+    "assert_response",
+    "assert_tool_calls",
+    "run_test_suite",
 ]
 
 try:

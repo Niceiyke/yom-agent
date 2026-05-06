@@ -4,23 +4,20 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 import yaml
 
-from yom.models import AgentState
 from yom.config import RuntimeSettings
 from yom.deps import RuntimeDeps
 from yom.agent_runtime import AgentRuntime, CoreRuntime
 from yom.session import FileSessionBackend, InMemorySessionBackend
-from yom.context import ContextConfig, ContextManager, create_token_counter
 from yom.logging_config import setup_logging
 
 
 def build_runtime(
     settings: RuntimeSettings,
     deps: RuntimeDeps | None = None,
-) -> AgentRuntime:
+) -> CoreRuntime:
     """
     Build an AgentRuntime from RuntimeSettings.
 

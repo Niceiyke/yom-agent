@@ -174,7 +174,7 @@ class FileSessionBackend(SessionBackend):
             "metadata": {"_truncated": True},
         }
         from yom.models.messages import SystemMessage
-        state.messages = [SystemMessage(content=summary_msg["content"])] + kept_messages
+        state.messages = [SystemMessage(content=str(summary_msg["content"]))] + kept_messages
         return state
 
     async def create(self, session_id: str, state: AgentState) -> None:

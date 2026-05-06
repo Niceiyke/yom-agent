@@ -52,6 +52,7 @@ class Message:
     content: str
     tool_call_id: str | None = None
     name: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         result = {"role": self.role, "content": self.content}
@@ -91,7 +92,15 @@ class BaseProvider(ABC):
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream a completion response."""
-        raise NotImplementedError(f"{self.provider_name} does not support streaming")
+        # Default implementation - use complete and yield chunks
+        full_response = await self.complete(messages, model, config, tools)
+        if full_response.content:
+            yield StreamChunk(
+                content=full_response.content,
+                is_final=True,
+                stop_reason=full_response.stop_reason,
+                raw={},
+            )
 
     @abstractmethod
     def convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:

@@ -7,14 +7,18 @@ to extend the runtime behavior.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Awaitable
+from typing import TYPE_CHECKING, Any, Callable, Awaitable
+
+if TYPE_CHECKING:
+    from yom.agent_runtime import AgentRuntime
+    from yom.models.state import AgentState
 
 
 class RuntimeExtension(ABC):
     """Base class for runtime extensions."""
 
     @abstractmethod
-    def on_initialized(self, runtime: "AgentRuntime") -> None:
+    def on_initialized(self, runtime: AgentRuntime) -> None:
         """Called when the runtime is initialized."""
         pass
 
@@ -28,12 +32,12 @@ class TurnHook(ABC):
     """Hook called before and after each agent turn."""
 
     @abstractmethod
-    async def before_turn(self, state: "AgentState") -> None:
+    async def before_turn(self, state: AgentState) -> None:
         """Called before a turn executes."""
         pass
 
     @abstractmethod
-    async def after_turn(self, state: "AgentState", response: str) -> None:
+    async def after_turn(self, state: AgentState, response: str) -> None:
         """Called after a turn completes."""
         pass
 
@@ -56,7 +60,7 @@ class SessionHook(ABC):
     """Hook called on session lifecycle events."""
 
     @abstractmethod
-    async def on_session_start(self, session_id: str, state: "AgentState") -> None:
+    async def on_session_start(self, session_id: str, state: AgentState) -> None:
         """Called when a session starts."""
         pass
 
@@ -70,7 +74,7 @@ class ErrorHandler(ABC):
     """Handler for runtime errors."""
 
     @abstractmethod
-    async def on_error(self, error: Exception, state: "AgentState | None") -> None:
+    async def on_error(self, error: Exception, state: AgentState | None) -> None:
         """Called when an error occurs."""
         pass
 

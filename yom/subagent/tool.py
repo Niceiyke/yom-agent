@@ -84,9 +84,9 @@ def create_spawn_tool(manager: SubAgentManager | None = None):
         }
         return await tool_fn(input_data, None)
 
-    spawn_tool._tool_name = "spawn_agent"
-    spawn_tool._tool_description = SPAWN_TOOL_SCHEMA["description"]
-    spawn_tool._tool_parameters = SPAWN_TOOL_SCHEMA["input_schema"]
+    spawn_tool._tool_name = "spawn_agent"  # type: ignore[attr-defined]
+    spawn_tool._tool_description = SPAWN_TOOL_SCHEMA["description"]  # type: ignore[attr-defined]
+    spawn_tool._tool_parameters = SPAWN_TOOL_SCHEMA["input_schema"]  # type: ignore[attr-defined]
 
     return spawn_tool
 
@@ -101,9 +101,9 @@ def create_catalog_tool(manager: SubAgentManager | None = None):
         return manager.registry.get_catalog_text()
 
     catalog_tool = get_catalog
-    catalog_tool._tool_name = "list_subagents"
-    catalog_tool._tool_description = "List available sub-agents that can be spawned."
-    catalog_tool._tool_parameters = {
+    catalog_tool._tool_name = "list_subagents"  # type: ignore[attr-defined]
+    catalog_tool._tool_description = "List available sub-agents that can be spawned."  # type: ignore[attr-defined]
+    catalog_tool._tool_parameters = {  # type: ignore[attr-defined]
         "type": "object",
         "properties": {},
         "required": [],

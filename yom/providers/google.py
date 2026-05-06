@@ -79,6 +79,7 @@ class GoogleProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,  # type: ignore[override]
     ) -> LLMResponse:
         """Send completion request to Google Gemini."""
         try:
@@ -166,6 +167,7 @@ class GoogleProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,  # type: ignore[override]
     ) -> AsyncIterator[StreamChunk]:
         """Stream completion from Google Gemini."""
         try:

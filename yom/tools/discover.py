@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from yom.tools.registry import ToolRegistry
 
@@ -23,9 +23,9 @@ def discover_tools_in_module(module) -> Iterator:
             yield obj
 
 
-def load_tools_from_file(path: Path) -> list:
+def load_tools_from_file(path: Path) -> list[Any]:
     """Load and return tools from a Python file."""
-    tools = []
+    tools: list[Any] = []
     spec = importlib.util.spec_from_file_location(path.stem, path)
     if spec is None or spec.loader is None:
         return tools

@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
-from yom.models import AgentState, Message as YomMessage
+from yom.models import Message as YomMessage
 from yom.providers import (
     BaseProvider,
     CompletionConfig,
@@ -210,11 +210,11 @@ class AgentLoop:
         # Get execute function
         execute_fn = getattr(tool, "execute", None)
         if execute_fn is None:
-            execute_fn = tool
+            execute_fn = tool  # type: ignore[assignment]
 
         # Execute
         try:
-            result = execute_fn(**tool_call.arguments)
+            result = execute_fn(**tool_call.arguments)  # type: ignore[operator]
             if asyncio.iscoroutine(result):
                 result = await result
             if hasattr(result, "content"):
@@ -299,7 +299,7 @@ class AgentLoop:
                         }
                     })
                 # Store tool_calls info for convert_messages to include
-                assistant_msg._tool_calls = tc_list
+                assistant_msg.metadata["_tool_calls"] = tc_list
 
             for result, tc in zip(tool_results, tool_calls):
                 tool_msg = Message(

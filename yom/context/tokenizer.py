@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Protocol
 
 
@@ -21,7 +19,7 @@ class TiktokenCounter:
     def __init__(self, encoding_name: str = "cl100k_base"):
         try:
             import tiktoken
-            self._encoding = tiktoken.get_encoding(encoding_name)
+            self._encoding: tiktoken.Encoding | None = tiktoken.get_encoding(encoding_name)
         except ImportError:
             self._encoding = None
             self._encoding_name = encoding_name

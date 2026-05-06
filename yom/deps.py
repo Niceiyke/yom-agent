@@ -1,13 +1,16 @@
 """Runtime dependencies for AgentRuntime."""
 
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from yom.tools import Tool
-    from yom.models import AgentState
-    from yom.session import SessionBackend
-    from yom.context import ContextManager
+    from yom.models.state import AgentState
+    from yom.session.backends import SessionBackend
+    from yom.context.manager import ContextManager
+    from yom.hooks.hooks import HookRegistry
 
 
 StreamFn = Callable[..., object]
@@ -17,11 +20,10 @@ StreamFn = Callable[..., object]
 class RuntimeDeps:
     """Container for runtime dependencies."""
     session_backend: SessionBackend | None = None
-    hooks: "HookRegistry" = field(default_factory=lambda: __import__("yom.hooks", fromlist=["HookRegistry"]).HookRegistry())
-    tool_registry: ToolRegistry | None = None
-    subagents: SubAgentManager = field(default_factory=lambda: __import__("yom.subagent.core", fromlist=["SubAgentManager"]).SubAgentManager())
-    llm_stream: StreamFn | None = None
+    tool_registry: Tool | None = None
     context_manager: ContextManager | None = None
+    llm_stream: StreamFn | None = None
+    hooks: HookRegistry | None = None
 
 
 class SessionManager:
@@ -31,9 +33,4 @@ class SessionManager:
 
 class ToolRegistry:
     """Tool registry placeholder for standalone mode."""
-    pass
-
-
-class SubAgentManager:
-    """Sub-agent manager placeholder for standalone mode."""
     pass

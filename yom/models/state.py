@@ -69,7 +69,7 @@ class AgentState:
     def add_assistant_message(self, content: str, tool_calls: list[dict] | None = None) -> None:
         """Add an assistant message."""
         from yom.models.messages import AssistantMessage
-        msg = AssistantMessage(content=content, tool_calls=tool_calls)
+        msg = AssistantMessage(content=content, tool_calls=tool_calls or [])
         self.add_message(msg)
 
     def add_tool_message(

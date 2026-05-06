@@ -86,6 +86,7 @@ class AnthropicProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,  # type: ignore[override]
     ) -> LLMResponse:
         """Send completion request to Anthropic."""
         try:
@@ -148,6 +149,7 @@ class AnthropicProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
+        tools: list[dict[str, Any]] | None = None,  # type: ignore[override]
     ) -> AsyncIterator[StreamChunk]:
         """Stream completion from Anthropic."""
         try:
@@ -159,7 +161,7 @@ class AnthropicProvider(BaseProvider):
 
         config = config or CompletionConfig()
 
-        client = AsyncAnthropic(api_key=self._get_api_key(), base_url=self._base_url)
+        client = self.client  # Use cached client
 
         system = ""
         anthropic_messages = []
@@ -168,6 +170,7 @@ class AnthropicProvider(BaseProvider):
                 system = msg.content
             else:
                 anthropic_messages.append({"role": msg.role, "content": msg.content})
+
 
         request_kwargs = {
             "model": model,

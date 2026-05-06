@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from pathlib import Path
 from typing import Optional
 
 try:
     import click
     from rich.console import Console
     from rich.panel import Panel
-    from rich.syntax import Syntax
 except ImportError:
     print("CLI extras not installed. Run: pip install agent-core[cli]")
     sys.exit(1)
 
-from yom import AgentRuntime, RuntimeSettings, build_runtime, build_runtime_from_yaml, tool
+from yom import RuntimeSettings, build_runtime, build_runtime_from_yaml
 from yom.models import RuntimeRunResult
 
 
@@ -214,7 +212,80 @@ def validate(config: Optional[str]):
             console.print("[yellow]No config file provided[/yellow]")
     except Exception as e:
         console.print(f"[red]Configuration error: {e}[/red]")
-        sys.exit(1)
+
+
+
+@main.group()
+def telegram():
+    """Telegram bot commands."""
+    pass
+
+
+@telegram.command("polling")
+@click.option("--token", "-t", required=True, help="Telegram bot token")
+@click.option("--tools", default="core", help="Comma-separated tools to load")
+@click.option("--system-prompt", help="System prompt")
+def telegram_polling(token: str, tools: str, system_prompt: Optional[str]):
+    """Run Telegram bot with polling."""
+    from yom.toolsets.telegram import TelegramBot
+    from yom import Agent
+    
+    async def run():
+        tool_list = [t.strip() for t in tools.split(",")]
+        agent = Agent(tools=tool_list, system_prompt=system_prompt or "You are helpful.")
+        bot = TelegramBot(token=token, agent=agent)
+        console.print(f"[green]🤖 Bot started![/green] Send a message to try it.")
+        console.print("[yellow]Press Ctrl+C to stop[/yellow]")
+        try:
+            await bot.poll()
+        except KeyboardInterrupt:
+            bot.stop()
+            console.print("\n[green]👋 Bot stopped.[/green]")
+    
+    asyncio.run(run())
+
+
+@telegram.command("set-webhook")
+@click.option("--token", "-t", required=True, help="Telegram bot token")
+@click.option("--url", "-u", required=True, help="Webhook URL")
+def telegram_set_webhook(token: str, url: str):
+    """Set webhook URL for the bot."""
+    import httpx
+    
+    async def set_wh():
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/setWebhook",
+                json={"url": url}
+            )
+            result = response.json()
+            if result.get("ok"):
+                console.print(f"[green]✅ Webhook set to {url}[/green]")
+            else:
+                console.print(f"[red]❌ Error: {result.get('description')}[/red]")
+    
+    asyncio.run(set_wh())
+
+
+@telegram.command("get-updates")
+@click.option("--token", "-t", required=True, help="Telegram bot token")
+def telegram_get_updates(token: str):
+    """Get pending updates (clears pending messages)."""
+    import httpx
+    
+    async def get_upd():
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://api.telegram.org/bot{token}/getUpdates"
+            )
+            result = response.json()
+            if result.get("ok"):
+                updates = result.get("result", [])
+                console.print(f"[green]{len(updates)} pending update(s)[/green]")
+            else:
+                console.print(f"[red]❌ Error: {result.get('description')}[/red]")
+    
+    asyncio.run(get_upd())
 
 
 def main_CLI():

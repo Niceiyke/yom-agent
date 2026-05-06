@@ -1,17 +1,32 @@
-# yom-agent
+# yom - Agent Runtime Framework
 
-Configurable, installable agent runtime with tool calling, session management, and multi-provider LLM support.
+**yom** is an open-source agent runtime that makes it easy to build AI-powered applications with tool calling, session management, and multi-provider support.
+
+```python
+from yom import Agent
+
+agent = Agent(tools=["core"])
+result = await agent.run("Hello, world!")
+```
+
+## Features
+
+- 🔧 **Tool Calling** - Extend agents with custom tools
+- 💾 **Sessions** - Conversation memory that persists
+- 🔌 **Plugins** - Hot-reloadable extensions
+- 🌐 **Multi-Provider** - OpenAI, Anthropic, Google, Ollama, NVIDIA
+- 🧪 **Testing** - Built-in testing utilities
+- 🐛 **Debug Mode** - Trace and debug agent behavior
 
 ## Installation
 
 ```bash
-pip install yom-agent
+pip install yom
 ```
 
-Or from source:
+With extras:
 ```bash
-cd packages/yom-agent
-pip install -e .
+pip install yom[anthropic,google,s3,telegram]
 ```
 
 ## Quick Start
@@ -20,306 +35,286 @@ pip install -e .
 from yom import Agent
 
 agent = Agent(
-    system_prompt="You are a helpful coding assistant",
-    tools=["core"]  # read, write, edit, bash, grep, glob
+    tools=["core"],
+    system_prompt="You are a helpful assistant."
 )
 
-result = agent.run_sync("Read /tmp/test.py and explain it")
-print(result)
+# Run synchronously
+result = agent.run_sync("What is Python?")
+
+# Or async
+import asyncio
+result = asyncio.run(agent.run("What is Python?"))
 ```
 
-## Core Concepts
+## Tools
+
+### Built-in Tools
+
+```python
+from yom import Agent
+
+# Use built-in tools by name
+agent = Agent(tools=["core", "http_request", "shell"])
+
+# Your tools
+from yom import tool
+
+@tool(name="my_tool", description="Does something")
+def my_tool(arg1: str) -> str:
+    return f"Hello, {arg1}!"
+
+agent = Agent(tools=["core", my_tool])
+```
+
+### Available Tool Categories
+
+| Category | Tools |
+|----------|-------|
+| **core** | read, write, edit, bash, glob, grep |
+| **http** | http_request, get_json |
+| **database** | query_db, db_schema |
+| **github** | github_api, github_read_file, github_search |
+| **storage** | s3_put, s3_get, s3_list |
+| **shell** | shell, shell_script |
+
+## Providers
+
+yom supports multiple LLM providers:
+
+```python
+from yom import Agent
+
+# OpenAI (default)
+agent = Agent()  # Uses OPENAI_API_KEY env var
+
+# MiniMax
+agent = Agent(provider="minimax")  # Uses MINIMAX_API_KEY
+
+# Anthropic
+from yom.providers import AnthropicProvider
+agent = Agent(provider=AnthropicProvider(api_key="sk-..."))
+
+# Ollama (local)
+from yom.providers import OllamaProvider
+agent = Agent(provider=OllamaProvider(model="llama3"))
+```
+
+## Sessions
+
+Agents remember conversations:
+
+```python
+agent = Agent(session_id="user-123")
+
+# First interaction
+agent.run("My name is Alice")
+# → Remembers "Alice"
+
+# Later
+agent.run("What is my name?")
+# → "Your name is Alice"
+```
+
+### Session Backends
+
+```python
+# In-memory (default)
+agent = Agent(session_id="123")
+
+# File-based (persists to disk)
+agent = Agent(
+    session_id="123",
+    session_backend="file",
+    session_dir="./sessions"
+)
+
+# Or explicit
+from yom.session import FileSessionBackend
+agent = Agent(
+    session_id="123",
+    session_backend=FileSessionBackend(dir="./sessions")
+)
+```
+
+## Testing
+
+```python
+from yom.testing import fake_agent, MockProvider
+
+# Fake agent for testing
+agent = fake_agent("I am a test agent")
+result = agent.run_sync("Hello")
+assert "test agent" in result
+
+# Mock provider
+provider = MockProvider(responses=["First", "Second", "Third"])
+agent = fake_agent(provider=provider)
+```
+
+## Debug Mode
+
+```python
+from yom.debug import enable_debug, trace, get_recorder
+
+# Enable debug output
+enable_debug()
+
+# Trace execution
+with trace("my_operation") as ctx:
+    # ... do stuff
+    pass
+
+# View recorded traces
+recorder = get_recorder()
+for event in recorder.events:
+    print(event)
+```
+
+## Plugin System
+
+```python
+from yom.plugins import YomApp, ToolPlugin
+
+app = YomApp()
+
+# Load plugins from directory
+app.plugin_manager.load_plugins("./plugins")
+
+# Create plugin
+class MyPlugin(ToolPlugin):
+    name = "my-plugin"
+    
+    @staticmethod
+    @tool(name="my_tool")
+    def my_tool():
+        return "Hello from plugin!"
+    
+    def get_tools(self):
+        return [self.my_tool]
+
+app.plugin_manager.register_plugin(MyPlugin())
+```
+
+## Telegram Bot
+
+```python
+from yom import Agent
+from yom.toolsets.telegram import TelegramBot
+
+agent = Agent(tools=["core"])
+bot = TelegramBot(token="YOUR_BOT_TOKEN", agent=agent)
+
+# Run polling
+await bot.poll()
+```
+
+### Telegram Commands
+
+```
+/start       - Welcome
+/new <name>  - Create session
+/switch <name> - Switch session
+/sessions    - List sessions
+/reset       - Clear history
+/help        - Show help
+```
+
+## CLI
+
+```bash
+# Run a prompt
+yom run "What is 2+2?"
+
+# Interactive REPL
+yom repl
+
+# Run with config
+yom run --config config.yaml
+
+# Telegram bot
+yom telegram polling --token "TOKEN"
+```
+
+## API Reference
 
 ### Agent
-
-The `Agent` class is the main entry point:
 
 ```python
 from yom import Agent
 
 agent = Agent(
-    system_prompt="You are helpful",
-    tools=["core", "spawn"],  # "core" includes built-in tools, "spawn" enables sub-agents
-    runtime_id="my-agent",
-    session_id="user-123",     # Optional: enables session persistence
+    system_prompt="You are...",      # System prompt
+    tools=["core", my_tool],         # Tools to use
+    model="gpt-4",                   # Model name
+    session_id="user-123",           # Session ID
+    session_backend="file",          # Session backend
+    session_dir="./sessions",        # Session directory
 )
 ```
 
 ### Tools
 
-#### Built-in Tools (`core`)
-
-| Tool | Description |
-|------|-------------|
-| `read` | Read file contents |
-| `write` | Write content to file |
-| `edit` | Replace old_string with new_string in file |
-| `bash` | Execute bash command |
-| `cmd` | Execute Windows command |
-| `grep` | Search for regex pattern in files |
-| `glob` | Find files matching glob pattern |
-
-#### Custom Tools
-
 ```python
-from yom import Agent, tool
+from yom import tool
 
-agent = Agent(tools=[])
-
-@tool(name="weather", description="Get weather for a location")
-def get_weather(location: str) -> str:
-    return f"Weather in {location}: sunny"
-
-agent.add_tool(get_weather)
-```
-
-Or with explicit schema:
-
-```python
-@tool(schema={
-    "type": "object",
-    "properties": {
-        "query": {"type": "string", "description": "Search query"}
-    },
-    "required": ["query"]
-})
-def search(query: str) -> str:
-    return f"Results for: {query}"
-```
-
-### Sessions
-
-Sessions maintain conversation history:
-
-```python
-# File-based sessions (persisted to disk)
-agent = Agent(session_backend="file", session_dir="./data")
-
-# In-memory sessions (ephemeral)
-agent = Agent(session_backend="memory")
-
-# Later, resume the same session
-result = await agent.run("What was I asking about?")
-```
-
-### Sub-agents
-
-Spawn specialized agents for specific tasks:
-
-```python
-# Register a sub-agent
-agent = Agent(tools=["core", "spawn"])
-agent.register_subagent(
-    name="reviewer",
-    description="Reviews code for bugs",
-    system_prompt="You are a code reviewer. Analyze code carefully...",
-    tools=["core"]
+@tool(
+    name="my_tool",
+    description="Does something",
+    schema={
+        "type": "object",
+        "properties": {
+            "arg1": {"type": "string"}
+        },
+        "required": ["arg1"]
+    }
 )
-
-# Or load from markdown files in a directory
-agent = Agent(agents_dir=".yom/agents")
-# Creates .yom/agents/*.md files with frontmatter defining agents
+def my_tool(arg1: str) -> str:
+    """Tool description."""
+    return f"Result: {arg1}"
 ```
 
-### Context Management
+## Configuration
 
-Control context window usage:
-
-```python
-from yom import RuntimeSettings, build_runtime
-from yom.context import ContextConfig, TruncationStrategy
-
-settings = RuntimeSettings(
-    runtime_id="my-agent",
-    max_context_tokens=100000,  # Truncate when context exceeds this
-    context_config=ContextConfig(
-        max_tokens=100000,
-        strategy=TruncationStrategy.TRUNCATE,
-        preserve_last_n_messages=2,  # Always keep last 2 messages
-    )
-)
-
-runtime = build_runtime(settings)
-```
-
-### Hooks
-
-Monitor agent events:
-
-```python
-from yom import HookRegistry
-
-hooks = HookRegistry()
-
-@hooks.before_turn
-async def on_before_turn(state, iteration):
-    print(f"Turn {iteration} starting")
-
-@hooks.after_turn
-async def on_after_turn(state, iteration, response):
-    print(f"Turn {iteration} completed")
-
-@hooks.on_tool_call
-async def on_tool(state, call):
-    print(f"Tool called: {call.name}")
-
-# Pass hooks to runtime via RuntimeDeps
-runtime = build_runtime(settings, deps=RuntimeDeps(hooks=hooks))
-```
-
-Available hooks: `agent_start`, `agent_end`, `turn_start`, `turn_end`, `before_turn`, `after_turn`, `before_tool_call`, `after_tool_call`, `on_tool_call`, `on_tool_result`, `session_start`, `session_end`, `on_error`.
-
-### Providers
-
-yom supports multiple LLM providers:
-
-```python
-from yom import create_provider
-
-# Auto-detect from model name
-provider = create_provider(model="claude-3-5-sonnet-latest")
-
-# Explicit
-provider = create_provider(provider="openai", api_key="sk-...")
-```
-
-Supported providers: OpenAI (and OpenAI-compatible like MiniMax), Anthropic, Google.
-
-## Runtime Configuration
-
-### RuntimeSettings
-
-```python
-from yom import RuntimeSettings
-
-settings = RuntimeSettings(
-    runtime_id="my-agent",
-    system_prompt="You are helpful",
-    default_model="MiniMax-M2.7",  # Provider auto-detected
-    max_turns=50,                  # Max turns per run
-    max_context_tokens=128000,     # Context window limit
-    log_level="INFO",               # Logging level
-    timeout=120.0,                 # Request timeout
-)
-```
-
-### Building Runtimes
-
-```python
-from yom import build_runtime, build_runtime_from_yaml
-
-# From settings
-runtime = build_runtime(settings)
-
-# From YAML file
-runtime = build_runtime_from_yaml("config.yaml")
-
-# From environment variables (AGENT_* prefix)
-runtime = build_runtime_from_env()
-```
-
-### Example YAML Config
+### YAML Config
 
 ```yaml
+# config.yaml
 runtime_id: my-agent
-system_prompt: You are a helpful coding assistant
-default_model: MiniMax-M2.7
-max_turns: 50
-max_context_tokens: 128000
-session:
-  backend: file
-  path: ./sessions
+system_prompt: You are a helpful assistant.
+
+provider:
+  name: openai
+  model: gpt-4o-mini
+
 tools:
   - core
-log_level: INFO
+  - http_request
+
+session:
+  backend: file
+  dir: ./sessions
 ```
 
-## FastAPI Integration
+### Environment Variables
 
-```python
-from yom.fastapi import create_agent_app
-from yom import RuntimeSettings
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key |
+| `MINIMAX_API_KEY` | MiniMax API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `GOOGLE_API_KEY` | Google API key |
+| `YOM_DEBUG` | Enable debug mode (1/0) |
 
-app = create_agent_app(
-    settings=RuntimeSettings(
-        runtime_id="helpdesk",
-        system_prompt="You are a helpful helpdesk agent",
-    ),
-    prefix="/agent"
-)
+## Examples
 
-# Run with: uvicorn.run(app, host="0.0.0.0", port=8000)
-```
+See `examples/` directory for complete examples:
 
-Endpoints:
-- `GET /agent/health` - Health check
-- `GET /agent/tools` - List available tools
-- `POST /agent/{session_id}/start` - Run prompt
-- `GET /agent/{session_id}/history` - Get session history
-- `WS /agent/{session_id}/ws` - WebSocket for streaming
-
-## Security
-
-### Path Validation
-
-File operations are restricted to allowed directories (`~` by default):
-
-```python
-# Protected paths are blocked automatically
-# /etc, /sys, /proc are always protected
-```
-
-### Command Allowlisting
-
-For bash tool, restrict allowed commands:
-
-```python
-from yom.tools.core import set_allowed_commands
-
-# Only allow safe read-only commands
-set_allowed_commands(["ls", "cat", "grep", "find", "head", "tail"])
-```
-
-### Timeout Limits
-
-Bash commands have a max timeout of 120 seconds.
-
-## Logging
-
-```python
-from yom.logging_config import setup_logging, get_logger
-
-# Configure logging
-setup_logging(level="DEBUG")
-
-# Use in modules
-logger = get_logger("my_module")
-logger.info("message", key="value")
-```
-
-Log level can also be set via `RuntimeSettings(log_level="DEBUG")`.
-
-## API Reference
-
-### yom.Agent
-
-- `run(prompt: str) -> str` - Async run
-- `run_sync(prompt: str) -> str` - Sync run
-- `clear_session()` - Clear current session
-- `register_subagent(...)` - Register a sub-agent
-- `list_subagents() -> list[str]` - List available sub-agents
-- `available_tools -> list[str]` - Get tool names
-
-### yom.RuntimeSettings
-
-Configuration for runtime creation. See Configuration section above.
-
-### yom.ContextManager
-
-- `truncate_messages(messages: list[dict], max_tokens: int) -> list[dict]`
-- `count_tokens(text: str) -> int`
-- `get_stats(messages: list[dict]) -> ContextStats`
+- `simple.py` - Basic usage
+- `with_tools.py` - Custom tools
+- `telegram_bot.py` - Telegram integration
+- `sessions.py` - Session management
 
 ## License
 
-MIT
+MIT License
