@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
-from yom.models import Message as YomMessage
+from yom.models import Message, ToolMessage as YomMessage
 from yom.providers import (
     BaseProvider,
     CompletionConfig,
@@ -202,7 +202,7 @@ class AgentLoop:
 
         if tool is None:
             return ToolResult(
-                tool_name=tool_name,
+                name=tool_name,
                 content="",
                 error=f"unknown_tool: {tool_name}",
             )
@@ -218,10 +218,10 @@ class AgentLoop:
             if asyncio.iscoroutine(result):
                 result = await result
             if hasattr(result, "content"):
-                return ToolResult(tool_name=tool_name, content=result.content)
-            return ToolResult(tool_name=tool_name, content=str(result))
+                return ToolResult(name=tool_name, content=result.content)
+            return ToolResult(name=tool_name, content=str(result))
         except Exception as e:
-            return ToolResult(tool_name=tool_name, content="", error=f"tool_error: {e}")
+            return ToolResult(name=tool_name, content="", error=f"tool_error: {e}")
 
     async def run_turn(
         self,
@@ -304,9 +304,9 @@ class AgentLoop:
             for result, tc in zip(tool_results, tool_calls):
                 tool_msg = Message(
                     role="tool",
-                    content=json.dumps({"name": result.tool_name, "result": result.content, "error": result.error}),
+                    content=json.dumps({"name": result.name, "result": result.content, "error": result.error}),
                     tool_call_id=tc.tool_call_id,
-                    name=result.tool_name,
+                    name=result.name,
                 )
                 provider_messages.append(tool_msg)
 
@@ -323,7 +323,30 @@ class AgentLoop:
             role = getattr(msg, 'role', 'user')
             if hasattr(role, 'value'):
                 role = role.value
-            result.append(Message(role=role, content=content))
+            
+            # Create message with all attributes
+            msg_dict = {'role': role, 'content': content}
+            
+            # Copy tool_call_id for tool messages
+            tool_call_id = getattr(msg, 'tool_call_id', None)
+            if tool_call_id:
+                msg_dict['tool_call_id'] = tool_call_id
+            
+            # Copy name for tool messages
+            name = getattr(msg, 'name', None)
+            if name:
+                msg_dict['name'] = name
+            
+            # Copy _tool_calls for assistant messages from metadata
+            tool_calls = msg.metadata.get('_tool_calls')
+            if tool_calls:
+                msg_dict['tool_calls'] = tool_calls
+            
+            # Use ToolMessage for tool role messages
+            if role == "tool":
+                result.append(ToolMessage(**msg_dict))
+            else:
+                result.append(Message(**msg_dict))
         return result
 
     async def stream_turn(

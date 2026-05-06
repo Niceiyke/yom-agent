@@ -53,6 +53,7 @@ class Message:
     tool_call_id: str | None = None
     name: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    _tool_calls: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = {"role": self.role, "content": self.content}

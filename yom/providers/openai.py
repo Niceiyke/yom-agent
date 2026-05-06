@@ -48,8 +48,11 @@ class OpenAIProvider(BaseProvider):
             if msg.role == "tool":
                 msg_dict["tool_call_id"] = getattr(msg, "tool_call_id", None)
                 msg_dict["name"] = getattr(msg, "name", None)
-            elif msg.role == "assistant" and hasattr(msg, "_tool_calls"):
-                msg_dict["tool_calls"] = msg._tool_calls
+            elif msg.role == "assistant":
+                # Check both attribute and metadata for tool_calls
+                tool_calls = getattr(msg, "_tool_calls", None) or msg.metadata.get("_tool_calls")
+                if tool_calls:
+                    msg_dict["tool_calls"] = tool_calls
             result.append(msg_dict)
         return result
 
