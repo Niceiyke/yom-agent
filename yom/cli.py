@@ -517,7 +517,7 @@ def chat(session_id: Optional[str], config: Optional[str], system_prompt: Option
     
     while True:
         try:
-            user_input = console.input("\n[bold blue]You:[/bold blue] ")
+            user_input = console.input("\n[cyan]You:[/cyan] ")
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Goodbye![/yellow]")
             break
@@ -614,7 +614,7 @@ def repl(config: Optional[str]):
     
     while True:
         try:
-            user_input = console.input("\n[bold blue>[/bold blue] ")
+            user_input = console.input("\n[cyan]>[/cyan] ")
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Goodbye![/yellow]")
             break
