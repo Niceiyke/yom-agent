@@ -97,6 +97,31 @@ class Agent:
 
     def _resolve_tools(self) -> list[Tool]:
         """Resolve tool specs to actual tools."""
+        from yom.toolsets import (
+            http_request, get_json,
+            query_db, db_schema,
+            github_api, github_read_file, github_search,
+            s3_put, s3_get, s3_list,
+            shell, shell_script,
+            telegram_send,
+        )
+        
+        TOOLSET_TOOLS = {
+            "http_request": http_request,
+            "get_json": get_json,
+            "query_db": query_db,
+            "db_schema": db_schema,
+            "github_api": github_api,
+            "github_read_file": github_read_file,
+            "github_search": github_search,
+            "s3_put": s3_put,
+            "s3_get": s3_get,
+            "s3_list": s3_list,
+            "shell": shell,
+            "shell_script": shell_script,
+            "telegram_send": telegram_send,
+        }
+        
         resolved = []
         for tool in self.tools:
             if tool == "core":
@@ -105,21 +130,25 @@ class Agent:
                 if self.enable_spawn and self._subagent_manager:
                     spawn_tool = create_spawn_tool(self._subagent_manager)
                     resolved.append(spawn_tool)
-                    # Also add catalog tool so LLM knows available agents
                     catalog_tool = create_catalog_tool(self._subagent_manager)
                     resolved.append(catalog_tool)
             elif callable(tool):
                 resolved.append(tool)
             elif isinstance(tool, str):
-                found = False
-                for t in CORE_TOOLS:
-                    name = getattr(t, "_tool_name", None) or getattr(t, "name", None)
-                    if name == tool:
-                        resolved.append(t)
-                        found = True
-                        break
-                if not found:
-                    raise ValueError(f"Unknown tool: {tool}")
+                # Check if it's a toolset tool
+                if tool in TOOLSET_TOOLS:
+                    resolved.append(TOOLSET_TOOLS[tool])
+                else:
+                    # Check CORE_TOOLS
+                    found = False
+                    for t in CORE_TOOLS:
+                        name = getattr(t, "_tool_name", None) or getattr(t, "name", None)
+                        if name == tool:
+                            resolved.append(t)
+                            found = True
+                            break
+                    if not found:
+                        raise ValueError(f"Unknown tool: {tool}")
             else:
                 raise TypeError(f"Invalid tool type: {type(tool)}")
         return resolved
