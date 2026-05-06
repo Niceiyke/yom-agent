@@ -19,11 +19,11 @@ class ToolResult:
             self.metadata = {}
 
     @classmethod
-    def from_success(cls, tool_name: str, content: str, **kwargs: Any) -> ToolResult:
+    def from_success(cls, tool_name: str, content: str, **kwargs: Any) -> "ToolResult":
         """Create a successful result."""
         return cls(tool_name=tool_name, content=content, success=True, **kwargs)
 
     @classmethod
-    def from_failure(cls, tool_name: str, error: str, **kwargs: Any) -> ToolResult:
+    def from_failure(cls, tool_name: str, error: str, **kwargs: Any) -> "ToolResult":
         """Create a failure result."""
         return cls(tool_name=tool_name, content="", success=False, error=error, **kwargs)
