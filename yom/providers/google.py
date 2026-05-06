@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from typing import Any, AsyncIterator
 
 from yom.providers.base import BaseProvider, CompletionConfig, LLMResponse, Message, StreamChunk, Usage
@@ -79,7 +80,7 @@ class GoogleProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
-        tools: list[dict[str, Any]] | None = None,  # type: ignore[override]
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         """Send completion request to Google Gemini."""
         try:
@@ -90,17 +91,44 @@ class GoogleProvider(BaseProvider):
             ) from exc
 
         config = config or CompletionConfig()
+        
+        # Validate and ensure unique tool call IDs
+        messages = self.validate_tool_call_ids(messages)
 
         system_instruction = ""
         google_contents = []
         for msg in messages:
             if msg.role == "system":
                 system_instruction = msg.content
-            else:
+            elif msg.role == "tool":
+                # Google uses functionResponse parts
+                tool_name = msg.name or "unknown"
                 google_contents.append({
-                    "role": msg.role,
-                    "parts": [{"text": msg.content}],
+                    "role": "model",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": tool_name,
+                            "response": {"content": msg.content}
+                        }
+                    }]
                 })
+            elif msg.role == "assistant" and msg._tool_calls:
+                # Convert tool_calls to function calls
+                parts = []
+                for tc in msg._tool_calls:
+                    tc_id = tc.get("id", f"call_{uuid.uuid4().hex[:8]}")
+                    func = tc.get("function", {})
+                    parts.append({
+                        "functionCall": {
+                            "id": tc_id,
+                            "name": func.get("name", ""),
+                            "args": func.get("arguments", {}),
+                        }
+                    })
+                google_contents.append({"role": "model", "parts": parts})
+            else:
+                role = "user" if msg.role == "user" else "model"
+                google_contents.append({"role": role, "parts": [{"text": msg.content}]})
 
         gemini_model = model
         if not gemini_model.startswith("models/"):

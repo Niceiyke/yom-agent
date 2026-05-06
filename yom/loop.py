@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
@@ -27,6 +29,16 @@ class ToolCall:
     tool_call_id: str | None = None
     name: str = ""
     arguments: dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        # Generate unique ID if not provided
+        if self.id is None and self.tool_call_id is None:
+            self.id = f"call_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+    
+    @property
+    def unique_id(self) -> str:
+        """Get the unique ID for this tool call."""
+        return self.id or self.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
 
     def to_dict(self) -> dict:
         result = {
@@ -273,6 +285,13 @@ class AgentLoop:
             if not tool_calls:
                 return response.content, all_tool_calls, total_tool_calls
 
+            # Generate unique IDs for all tool calls in this turn
+            for tc in tool_calls:
+                if not tc.id and not tc.tool_call_id:
+                    tc.id = f"call_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+                elif tc.tool_call_id and not tc.id:
+                    tc.id = tc.tool_call_id
+            
             tool_results = []
             for tc in tool_calls[:self.config.max_tool_calls]:
                 result = await self._execute_tool(tc)
@@ -291,8 +310,9 @@ class AgentLoop:
                 tc_list = []
                 for tc in all_tool_calls:
                     args = tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)
+                    tc_id = tc.id or tc.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
                     tc_list.append({
-                        "id": tc.tool_call_id,
+                        "id": tc_id,
                         "type": "function",
                         "function": {
                             "name": tc.name,
@@ -303,10 +323,11 @@ class AgentLoop:
                 assistant_msg.metadata["_tool_calls"] = tc_list
 
             for result, tc in zip(tool_results, tool_calls):
+                tc_id = tc.id or tc.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
                 tool_msg = Message(
                     role="tool",
                     content=json.dumps({"name": result.name, "result": result.content, "error": result.error}),
-                    tool_call_id=tc.tool_call_id,
+                    tool_call_id=tc_id,
                     name=result.name,
                 )
                 provider_messages.append(tool_msg)

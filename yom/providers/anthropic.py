@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from typing import Any, AsyncIterator
 
 from yom.providers.base import BaseProvider, CompletionConfig, LLMResponse, Message, StreamChunk, Usage
@@ -86,7 +87,7 @@ class AnthropicProvider(BaseProvider):
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
-        tools: list[dict[str, Any]] | None = None,  # type: ignore[override]
+        tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         """Send completion request to Anthropic."""
         try:
@@ -97,12 +98,39 @@ class AnthropicProvider(BaseProvider):
             ) from exc
 
         config = config or CompletionConfig()
+        
+        # Validate and ensure unique tool call IDs
+        messages = self.validate_tool_call_ids(messages)
 
         system = ""
         anthropic_messages = []
         for msg in messages:
             if msg.role == "system":
                 system = msg.content
+            elif msg.role == "tool":
+                # Anthropic uses tool_result content blocks
+                tool_id = msg.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": msg.content,
+                    }]
+                })
+            elif msg.role == "assistant" and msg._tool_calls:
+                # Convert tool_calls to Anthropic tool_use blocks
+                content = []
+                for tc in msg._tool_calls:
+                    tc_id = tc.get("id", f"call_{uuid.uuid4().hex[:8]}")
+                    func = tc.get("function", {})
+                    content.append({
+                        "type": "tool_use",
+                        "id": tc_id,
+                        "name": func.get("name", ""),
+                        "input": func.get("arguments", {}),
+                    })
+                anthropic_messages.append({"role": "assistant", "content": content})
             else:
                 anthropic_messages.append({"role": msg.role, "content": msg.content})
 

@@ -103,6 +103,9 @@ class OpenAIProvider(BaseProvider):
             ) from exc
 
         config = config or CompletionConfig()
+        
+        # Validate and ensure unique tool call IDs
+        messages = self.validate_tool_call_ids(messages)
 
         async def make_request():
             request_kwargs: dict[str, Any] = {
