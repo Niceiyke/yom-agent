@@ -202,7 +202,7 @@ class AgentLoop:
 
         if tool is None:
             return ToolResult(
-                name=tool_name,
+                tool_name=tool_name,
                 content="",
                 error=f"unknown_tool: {tool_name}",
             )
@@ -218,10 +218,10 @@ class AgentLoop:
             if asyncio.iscoroutine(result):
                 result = await result
             if hasattr(result, "content"):
-                return ToolResult(name=tool_name, content=result.content)
-            return ToolResult(name=tool_name, content=str(result))
+                return ToolResult(tool_name=tool_name, content=result.content)
+            return ToolResult(tool_name=tool_name, content=str(result))
         except Exception as e:
-            return ToolResult(name=tool_name, content="", error=f"tool_error: {e}")
+            return ToolResult(tool_name=tool_name, content="", error=f"tool_error: {e}")
 
     async def run_turn(
         self,
@@ -304,9 +304,9 @@ class AgentLoop:
             for result, tc in zip(tool_results, tool_calls):
                 tool_msg = Message(
                     role="tool",
-                    content=json.dumps({"name": result.name, "result": result.content, "error": result.error}),
+                    content=json.dumps({"name": result.tool_name, "result": result.content, "error": result.error}),
                     tool_call_id=tc.tool_call_id,
-                    name=result.name,
+                    name=result.tool_name,
                 )
                 provider_messages.append(tool_msg)
 
