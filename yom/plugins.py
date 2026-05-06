@@ -220,12 +220,16 @@ class PluginManager:
             raise ValueError("Plugin must have a name")
 
         plugin.setup(self.app)
+        try:
+            loop_time = asyncio.get_event_loop().time()
+        except RuntimeError:
+            loop_time = 0  # Fallback when no event loop exists
         self._plugins[plugin.name] = PluginInfo(
             name=plugin.name,
             version=plugin.version,
             description=plugin.description,
             instance=plugin,
-            loaded_at=asyncio.get_event_loop().time(),
+            loaded_at=loop_time,
         )
         logger.info(f"Loaded plugin: {plugin.name} v{plugin.version}")
 
