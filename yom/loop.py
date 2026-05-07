@@ -292,9 +292,47 @@ class AgentLoop:
                 elif tc.tool_call_id and not tc.id:
                     tc.id = tc.tool_call_id
             
+            # Execute all tools IN PARALLEL (they are independent)
+            # Note: Some tools may be sync (blocking), so we use run_in_executor
+            async def execute_with_index(tc):
+                # Check if tool is async or sync
+                tool = None
+                for t in self.tools:
+                    name = getattr(t, "_tool_name", None) or getattr(t, "name", None)
+                    if name == tc.name:
+                        tool = t
+                        break
+                
+                if tool is None:
+                    return tc, ToolResult(name=tc.name, content="", error=f"unknown_tool: {tc.name}")
+                
+                execute_fn = getattr(tool, "execute", None) or tool
+                
+                try:
+                    result = execute_fn(**tc.arguments)
+                    if asyncio.iscoroutine(result):
+                        result = await result
+                    elif asyncio.iscoroutinefunction(execute_fn):
+                        result = await result
+                    else:
+                        # Sync function - run in executor to not block
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(None, lambda: execute_fn(**tc.arguments))
+                    
+                    if hasattr(result, "content"):
+                        return tc, ToolResult(name=tc.name, content=result.content)
+                    return tc, ToolResult(name=tc.name, content=str(result))
+                except Exception as e:
+                    return tc, ToolResult(name=tc.name, content="", error=f"tool_error: {e}")
+            
+            # Execute all tool calls concurrently
+            results_with_calls = await asyncio.gather(
+                *[execute_with_index(tc) for tc in tool_calls[:self.config.max_tool_calls]]
+            )
+            
+            # Collect results in order
             tool_results = []
-            for tc in tool_calls[:self.config.max_tool_calls]:
-                result = await self._execute_tool(tc)
+            for tc, result in results_with_calls:
                 tool_results.append(result)
                 total_tool_calls += 1
                 all_tool_calls.append(tc)

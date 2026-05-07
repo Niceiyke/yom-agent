@@ -77,8 +77,12 @@ def http_request(
     body: str | None = None,
     timeout: int = 30,
 ) -> str:
-    """Make an HTTP request to a URL."""
+    """Make an HTTP request (sync wrapper for backward compatibility).
+    
+    For async execution with parallel requests, use http_request_async.
+    """
     import httpx
+    import asyncio
 
     try:
         header_dict = {}
@@ -100,7 +104,7 @@ def http_request(
             url=url,
             headers=header_dict,
             json=request_body if isinstance(request_body, dict) else None,
-            data=request_body if isinstance(request_body, str) else {},  # type: ignore[arg-type]
+            data=request_body if isinstance(request_body, str) else {},
             timeout=timeout,
         )
 
@@ -117,9 +121,10 @@ def http_request(
         return json.dumps({
             "status_code": response.status_code,
             "headers": response_headers,
-            "body": body_content,
             "is_json": is_json,
-        }, indent=2)
+            "body": body_content,
+            "url": url,
+        })
 
     except httpx.TimeoutException:
         return f"Error: Request timed out after {timeout}s"
