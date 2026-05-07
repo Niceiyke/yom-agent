@@ -293,9 +293,8 @@ class AgentLoop:
                     tc.id = tc.tool_call_id
             
             # Execute all tools IN PARALLEL (they are independent)
-            # Note: Some tools may be sync (blocking), so we use run_in_executor
-            async def execute_with_index(tc):
-                # Check if tool is async or sync
+            # Execute tools concurrently but collect results in ORIGINAL order
+            async def execute_one(tc: ToolCall, index: int):
                 tool = None
                 for t in self.tools:
                     name = getattr(t, "_tool_name", None) or getattr(t, "name", None)
@@ -304,7 +303,7 @@ class AgentLoop:
                         break
                 
                 if tool is None:
-                    return tc, ToolResult(name=tc.name, content="", error=f"unknown_tool: {tc.name}")
+                    return index, ToolResult(name=tc.name, content="", error=f"unknown_tool: {tc.name}")
                 
                 execute_fn = getattr(tool, "execute", None) or tool
                 
@@ -315,27 +314,28 @@ class AgentLoop:
                     elif asyncio.iscoroutinefunction(execute_fn):
                         result = await result
                     else:
-                        # Sync function - run in executor to not block
+                        # Sync function - run in executor
                         loop = asyncio.get_event_loop()
                         result = await loop.run_in_executor(None, lambda: execute_fn(**tc.arguments))
                     
                     if hasattr(result, "content"):
-                        return tc, ToolResult(name=tc.name, content=result.content)
-                    return tc, ToolResult(name=tc.name, content=str(result))
+                        return index, ToolResult(name=tc.name, content=result.content)
+                    return index, ToolResult(name=tc.name, content=str(result))
                 except Exception as e:
-                    return tc, ToolResult(name=tc.name, content="", error=f"tool_error: {e}")
+                    return index, ToolResult(name=tc.name, content="", error=f"tool_error: {e}")
             
             # Execute all tool calls concurrently
-            results_with_calls = await asyncio.gather(
-                *[execute_with_index(tc) for tc in tool_calls[:self.config.max_tool_calls]]
+            indexed_results = await asyncio.gather(
+                *[execute_one(tc, i) for i, tc in enumerate(tool_calls[:self.config.max_tool_calls])]
             )
             
-            # Collect results in order
+            # Sort by original index to maintain order
+            indexed_results.sort(key=lambda x: x[0])
+            
+            # Collect results in original order
             tool_results = []
-            for tc, result in results_with_calls:
+            for _, result in indexed_results:
                 tool_results.append(result)
-                total_tool_calls += 1
-                all_tool_calls.append(tc)
 
             assistant_msg = Message(
                 role="assistant",
@@ -360,7 +360,7 @@ class AgentLoop:
                 # Store tool_calls info for convert_messages to include
                 assistant_msg.metadata["_tool_calls"] = tc_list
 
-            for result, tc in zip(tool_results, tool_calls):
+            for result, tc in zip(tool_results, all_tool_calls):
                 tc_id = tc.id or tc.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
                 tool_msg = Message(
                     role="tool",
