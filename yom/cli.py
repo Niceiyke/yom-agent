@@ -701,7 +701,7 @@ def repl(config, no_stream, model, base_url):
                 tool_count = [0]
                 
                 def on_chunk(text):
-                    console.print(text, end="", flush=True)
+                    console.print(text, end="")
                     collected.append(text)
                 
                 def on_tool(name, args):
