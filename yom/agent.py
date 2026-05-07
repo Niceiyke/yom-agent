@@ -283,35 +283,48 @@ class Agent:
         messages = [Message(role="user", content=prompt)]
         
         try:
-            response_content, tool_calls, tool_count = await loop.run_turn(
-                messages=messages,
-                model=model,
-                config=config,
-                system_prompt=self.system_prompt,
-            )
+            # Use stream_turn for true streaming
+            collected_content = []
+            collected_tool_calls = []
             
-            # Report tool calls via callback
-            if tool_callback and tool_calls:
-                for tc in tool_calls:
-                    tool_callback(tc.name, tc.arguments)
+            async for chunk in loop.stream_turn(messages, model, config):
+                if chunk.content:
+                    collected_content.append(chunk.content)
+                    if stream_callback:
+                        stream_callback(chunk.content)
+                if chunk.raw and 'tool_calls' in chunk.raw:
+                    for tc in chunk.raw['tool_calls']:
+                        func = tc.get('function', tc)
+                        args = func.get('arguments', {})
+                        if isinstance(args, str):
+                            import json
+                            try:
+                                args = json.loads(args)
+                            except:
+                                pass
+                        from yom.loop import ToolCall
+                        tc_obj = ToolCall(
+                            tool_call_id=tc.get('id'),
+                            name=func.get('name', ''),
+                            arguments=args,
+                        )
+                        collected_tool_calls.append(tc_obj)
+                        if tool_callback:
+                            tool_callback(tc_obj.name, tc_obj.arguments)
+                if chunk.is_final:
+                    break
             
-            # Stream response in chunks via callback
-            if stream_callback:
-                for i in range(0, len(response_content), 10):
-                    stream_callback(response_content[i:i+10])
+            response_content = "".join(collected_content)
             
             # Report tool calls
             tool_info = []
-            if tool_callback and tool_calls:
-                for tc in tool_calls:
-                    tool_callback(tc.name, tc.arguments)
-                    tool_info.append({"name": tc.name, "args": tc.arguments})
+            for tc in collected_tool_calls:
+                tool_info.append({"name": tc.name, "args": tc.arguments})
             
             return {
                 "content": response_content,
                 "tool_calls": tool_info,
             }
-                
         except Exception as e:
             error_msg = f"Error: {e}"
             if stream_callback:
