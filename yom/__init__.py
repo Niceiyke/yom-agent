@@ -86,6 +86,11 @@ from yom.toolsets import (
     shell_script,
 )
 
+# New P0-P3 features
+from yom.events import AgentEvent, AgentEventType
+from yom.cancellation import CancellationToken, CancellationScope
+from yom.rpc import serve_rpc, RPCClient, create_rpc_client
+
 __version__ = "0.1.1"
 
 __all__ = [
@@ -195,6 +200,15 @@ __all__ = [
     "assert_response",
     "assert_tool_calls",
     "run_test_suite",
+    # P0: Events & Cancellation
+    "AgentEvent",
+    "AgentEventType",
+    "CancellationToken",
+    "CancellationScope",
+    # P3: RPC
+    "serve_rpc",
+    "RPCClient",
+    "create_rpc_client",
 ]
 
 try:

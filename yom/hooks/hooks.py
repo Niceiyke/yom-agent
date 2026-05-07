@@ -263,6 +263,145 @@ class HookRegistry:
 
         return result, blocked
 
+    def unregister(self, name: str, fn: HookFn) -> bool:
+        """Unregister a specific hook function.
+        
+        Args:
+            name: Event name
+            fn: The hook function to remove
+            
+        Returns:
+            True if the hook was found and removed, False otherwise.
+        
+        Example:
+            async def my_hook(state):
+                print("called")
+            
+            hooks.register("before_turn", my_hook)
+            hooks.unregister("before_turn", my_hook)  # Removes it
+        """
+        if name not in HOOK_NAMES:
+            raise ValueError(f"Unknown hook: {name}. Must be one of: {sorted(HOOK_NAMES)}")
+        
+        removed = False
+        
+        # Check main hooks
+        if fn in self._hooks[name]:
+            self._hooks[name].remove(fn)
+            removed = True
+        
+        # Check before hooks
+        if fn in self._before_hooks.get(name, []):
+            self._before_hooks[name].remove(fn)
+            removed = True
+        
+        # Check after hooks
+        if fn in self._after_hooks.get(name, []):
+            self._after_hooks[name].remove(fn)
+            removed = True
+        
+        return removed
+
+    def unregister_all(self, name: str | None = None) -> int:
+        """Unregister all hooks, or all hooks for a specific event.
+        
+        Args:
+            name: Optional event name. If None, clears all hooks.
+            
+        Returns:
+            Number of hooks removed.
+        """
+        if name is not None:
+            if name not in HOOK_NAMES:
+                raise ValueError(f"Unknown hook: {name}. Must be one of: {sorted(HOOK_NAMES)}")
+            count = (
+                len(self._hooks.get(name, [])) +
+                len(self._before_hooks.get(name, [])) +
+                len(self._after_hooks.get(name, []))
+            )
+            self._hooks[name] = []
+            self._before_hooks[name] = []
+            self._after_hooks[name] = []
+            return count
+        else:
+            count = 0
+            for n in HOOK_NAMES:
+                count += len(self._hooks.get(n, []))
+                count += len(self._before_hooks.get(n, []))
+                count += len(self._after_hooks.get(n, []))
+            self.clear()
+            return count
+
+    def has_hook(self, name: str, fn: HookFn) -> bool:
+        """Check if a hook function is registered.
+        
+        Args:
+            name: Event name
+            fn: Hook function to check
+            
+        Returns:
+            True if the hook is registered, False otherwise.
+        """
+        if name not in HOOK_NAMES:
+            return False
+        return (
+            fn in self._hooks.get(name, []) or
+            fn in self._before_hooks.get(name, []) or
+            fn in self._after_hooks.get(name, [])
+        )
+
+    def get_hooks(self, name: str) -> dict[str, list[HookFn]]:
+        """Get all hooks registered for an event.
+        
+        Args:
+            name: Event name
+            
+        Returns:
+            Dict with 'before', 'main', and 'after' keys mapping to lists of hooks.
+        """
+        if name not in HOOK_NAMES:
+            raise ValueError(f"Unknown hook: {name}. Must be one of: {sorted(HOOK_NAMES)}")
+        return {
+            "before": list(self._before_hooks.get(name, [])),
+            "main": list(self._hooks.get(name, [])),
+            "after": list(self._after_hooks.get(name, [])),
+        }
+
+    def count(self, name: str | None = None) -> int:
+        """Count registered hooks.
+        
+        Args:
+            name: Optional event name. If None, counts all hooks.
+            
+        Returns:
+            Number of registered hooks.
+        """
+        if name is not None:
+            if name not in HOOK_NAMES:
+                raise ValueError(f"Unknown hook: {name}. Must be one of: {sorted(HOOK_NAMES)}")
+            return (
+                len(self._hooks.get(name, [])) +
+                len(self._before_hooks.get(name, [])) +
+                len(self._after_hooks.get(name, []))
+            )
+        else:
+            total = 0
+            for n in HOOK_NAMES:
+                total += self.count(n)
+            return total
+
+    def list_events(self) -> list[str]:
+        """List all event names that have registered hooks.
+        
+        Returns:
+            List of event names with at least one hook registered.
+        """
+        events = []
+        for name in HOOK_NAMES:
+            if self.count(name) > 0:
+                events.append(name)
+        return events
+
     def clear(self) -> None:
         """Clear all registered hooks."""
         self._hooks = {name: [] for name in HOOK_NAMES}

@@ -8,7 +8,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, TYPE_CHECKING
 
 from yom.models import Message, ToolMessage as YomMessage
 from yom.providers import (
@@ -20,6 +20,9 @@ from yom.providers import (
     create_provider,
 )
 from yom.tools import Tool
+
+if TYPE_CHECKING:
+    from yom.cancellation import CancellationToken
 
 
 @dataclass
@@ -78,11 +81,22 @@ class AgentLoop:
         provider: BaseProvider,
         tools: list[Tool] | None = None,
         config: AgentLoopConfig | None = None,
+        cancellation_token: "CancellationToken | None" = None,
     ):
         self.provider = provider
         self.tools = tools or []
         self.config = config or AgentLoopConfig()
         self._last_usage: dict | None = None
+        self._cancellation_token: "CancellationToken | None" = cancellation_token
+
+    def set_cancellation_token(self, token: "CancellationToken | None") -> None:
+        """Set or update the cancellation token."""
+        self._cancellation_token = token
+
+    def _check_cancellation(self) -> None:
+        """Check if cancellation was requested and raise CancelledError if so."""
+        if self._cancellation_token and self._cancellation_token.is_cancelled:
+            raise asyncio.CancelledError(self._cancellation_token.cancel_reason)
 
     def _get_tool_schemas(self) -> list[dict[str, Any]]:
         """Get tool schemas for LLM in provider-agnostic format."""
@@ -285,7 +299,13 @@ class AgentLoop:
         while iteration < max_turns:
             iteration += 1
 
+            # Check for cancellation before LLM call
+            self._check_cancellation()
+
             response = await self.provider.complete(provider_messages, model, config, tools=tool_schemas if tool_schemas else None)
+
+            # Check for cancellation after LLM call
+            self._check_cancellation()
 
             if response.usage:
                 self._last_usage = {
@@ -358,9 +378,9 @@ class AgentLoop:
             provider_messages.append(assistant_msg)
 
             # Add tool_calls to assistant message if there were tool calls
-            if all_tool_calls:
+            if tool_calls:
                 tc_list = []
-                for tc in all_tool_calls:
+                for tc in tool_calls:
                     args = tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)
                     tc_id = tc.id or tc.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
                     tc_list.append({
@@ -374,7 +394,7 @@ class AgentLoop:
                 # Store tool_calls info for convert_messages to include
                 assistant_msg.metadata["_tool_calls"] = tc_list
 
-            for result, tc in zip(tool_results, all_tool_calls):
+            for result, tc in zip(tool_results, tool_calls):
                 tc_id = tc.id or tc.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
                 tool_msg = Message(
                     role="tool",
@@ -434,6 +454,9 @@ class AgentLoop:
             yield StreamChunk(content="No messages to process", is_final=True)
             return
 
+        # Check for cancellation at start
+        self._check_cancellation()
+
         provider_messages = self._convert_messages(messages)
 
         system_content = "You are a helpful assistant."
@@ -445,8 +468,18 @@ class AgentLoop:
 
         config = config or CompletionConfig(max_tokens=4096)
 
-        async for chunk in self.provider.stream(provider_messages, model, config):
-            yield chunk
+        try:
+            async for chunk in self.provider.stream(provider_messages, model, config):
+                # Check for cancellation during streaming
+                self._check_cancellation()
+                yield chunk
+        except asyncio.CancelledError:
+            # Re-raise cancellation
+            raise
+        except Exception as e:
+            # Let other exceptions propagate
+            yield StreamChunk(content=f"Error: {e}", is_final=True)
+            return
 
         yield StreamChunk(content="", is_final=True)
 

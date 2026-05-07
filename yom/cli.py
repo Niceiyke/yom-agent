@@ -965,6 +965,36 @@ def telegram_get_updates(token: str):
 
 
 # =============================================================================
+# RPC MODE
+# =============================================================================
+
+@main.command("rpc")
+def rpc():
+    """Start yom in RPC mode.
+    
+    Listens for JSON-RPC 2.0 requests on stdin and writes responses to stdout.
+    This enables embedding yom in other applications or using it from other languages.
+    
+    Supported methods:
+        - agent.run: Run a prompt
+        - agent.call_tool: Call a tool directly
+        - agent.get_state: Get current agent state
+        - agent.abort: Abort current operation
+        - agent.get_session_messages: Get session messages
+        - agent.new_session: Clear and start new session
+        - agent.dispose: Clean up resources
+        - rpc.discover: List available methods
+    
+    Example client usage:
+        $ yom rpc
+        {"jsonrpc": "2.0", "id": 1, "method": "agent.run", "params": {"prompt": "Hello"}}
+        {"jsonrpc": "2.0", "id": 1, "result": {"content": "Hello! How can I help?"}}
+    """
+    from yom.rpc import serve_rpc
+    asyncio.run(serve_rpc())
+
+
+# =============================================================================
 # ENTRY POINT
 # =============================================================================
 

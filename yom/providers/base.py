@@ -195,14 +195,18 @@ class BaseProvider(ABC):
         config: CompletionConfig | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream a completion response."""
+        """Stream a completion response.
+        
+        For providers that don't support true streaming, this falls back to
+        a complete call and yields the full response as a single chunk.
+        """
         full_response = await self.complete(messages, model, config, tools)
         if full_response.content:
             yield StreamChunk(
                 content=full_response.content,
                 is_final=True,
                 stop_reason=full_response.stop_reason,
-                raw={},
+                raw=full_response.raw or {},
             )
     
     @abstractmethod

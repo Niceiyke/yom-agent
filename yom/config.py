@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any,Callable
 
 if TYPE_CHECKING:
     from yom.session.backends import SessionBackend
