@@ -204,30 +204,47 @@ class Agent:
         """List available tool names."""
         return [getattr(t, "_tool_name", None) or getattr(t, "name", None) or str(t) for t in self._resolved_tools]
 
-    def run_sync(self, prompt: str) -> str:
-        """Run a prompt synchronously."""
-        return asyncio.run(self.run(prompt))
+    def run_sync(self, prompt: str, stream: bool = True) -> str:
+        """Run a prompt synchronously with streaming by default."""
+        return asyncio.run(self.run(prompt, stream=stream))
 
-    async def run(self, prompt: str) -> str:
-        """Run a prompt through the agent."""
-        runtime = await self._get_runtime()
-
-        session_id = self.session_id
-        if session_id is None:
-            import uuid
-            session_id = str(uuid.uuid4())
-            self.session_id = session_id
-
-        result = await runtime.run_prompt(prompt=prompt, session_id=session_id)
-        return result.final_message
-
-    async def run_stream(self, prompt: str):
-        """Run a prompt with streaming responses.
+    async def run(self, prompt: str, stream: bool = True, stream_callback=None, tool_callback=None) -> str:
+        """Run a prompt through the agent with optional streaming.
         
-        Yields chunks of the response as they arrive.
-        Usage:
-            async for chunk in agent.run_stream("Hello"):
-                print(chunk, end="")
+        Args:
+            prompt: User prompt
+            stream: If True, use streaming (default). If False, wait for complete response.
+            stream_callback: Called with each text chunk when streaming
+            tool_callback: Called when a tool is executed (name, args)
+        
+        Returns:
+            The agent's response
+        """
+        if stream:
+            # Use streaming with callbacks
+            result = await self.run_stream(prompt, stream_callback=stream_callback, tool_callback=tool_callback)
+            return result.get("content", "") if result else ""
+        else:
+            # Non-streaming mode - run full turn
+            runtime = await self._get_runtime()
+            session_id = self.session_id
+            if session_id is None:
+                import uuid
+                session_id = str(uuid.uuid4())
+                self.session_id = session_id
+            result = await runtime.run_prompt(prompt=prompt, session_id=session_id)
+            return result.final_message
+
+    async def run_stream(self, prompt: str, stream_callback=None, tool_callback=None) -> dict:
+        """Run a prompt with optional streaming.
+        
+        Args:
+            prompt: The user prompt
+            stream_callback: Called with text chunks
+            tool_callback: Called when a tool is called
+            
+        Returns:
+            dict with 'content' and 'tool_calls' keys
         """
         runtime = await self._get_runtime()
         
@@ -254,7 +271,7 @@ class Agent:
             runtime._state.add_message(UserMessage(content=prompt))
         
         provider = runtime._get_provider()
-        model = runtime._settings.default_model or "MiniMax-Text-01"
+        model = runtime._settings.default_model or "MiniMax-M2.7"
         config = runtime._get_completion_config()
         
         from yom.loop import AgentLoop
@@ -262,15 +279,73 @@ class Agent:
         
         loop = AgentLoop(provider=provider, tools=self._resolved_tools)
         
-        # Stream the response
+        # Run the full turn to get tool calls
         messages = [Message(role="user", content=prompt)]
-        async for chunk in loop.provider.stream(messages, model, config):
-            yield chunk.content
         
-        # Also update session with response
-        full_response = ""
-        async for chunk in loop.provider.stream(messages, model, config):
-            full_response += chunk.content
+        try:
+            response_content, tool_calls, tool_count = await loop.run_turn(
+                messages=messages,
+                model=model,
+                config=config,
+                system_prompt=self.system_prompt,
+            )
+            
+            # Report tool calls via callback
+            if tool_callback and tool_calls:
+                for tc in tool_calls:
+                    tool_callback(tc.name, tc.arguments)
+            
+            # Stream response in chunks via callback
+            if stream_callback:
+                for i in range(0, len(response_content), 10):
+                    stream_callback(response_content[i:i+10])
+            
+            # Report tool calls
+            tool_info = []
+            if tool_callback and tool_calls:
+                for tc in tool_calls:
+                    tool_callback(tc.name, tc.arguments)
+                    tool_info.append({"name": tc.name, "args": tc.arguments})
+            
+            return {
+                "content": response_content,
+                "tool_calls": tool_info,
+            }
+                
+        except Exception as e:
+            error_msg = f"Error: {e}"
+            if stream_callback:
+                stream_callback(error_msg)
+            return {"content": error_msg, "tool_calls": []}
+
+    def run_stream_sync(self, prompt: str, stream_callback=None, tool_callback=None) -> dict:
+        """Synchronous version of run_stream for non-async contexts.
+        
+        Usage:
+            def on_chunk(text):
+                print(text, end="")
+            def on_tool(name, args):
+                print(f"\n[Tool: {name}]")
+            
+            result = agent.run_stream_sync("prompt", on_chunk, on_tool)
+            # result = {'content': '...', 'tool_calls': [...]}
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're inside an async context - use thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, self.run_stream(prompt, stream_callback, tool_callback))
+                    return future.result()
+            else:
+                return asyncio.run(self.run_stream(prompt, stream_callback, tool_callback))
+        except RuntimeError:
+            # Fallback: use thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, self.run_stream(prompt, stream_callback, tool_callback))
+                return future.result()
 
     def clear_session(self) -> None:
         """Clear the current session."""

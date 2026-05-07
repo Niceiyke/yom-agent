@@ -590,27 +590,45 @@ def chat(session_id: Optional[str], config: Optional[str], system_prompt: Option
 
 @main.command()
 @click.option("--config", "-c", type=click.Path(exists=True), help="Config file")
-def repl(config: Optional[str]):
-    """Start a simple REPL session.
+@click.option("--no-stream", is_flag=True, help="Disable streaming (show complete response)")
+@click.option("--model", "-m", default=None, help="Model to use")
+@click.option("--base-url", "-b", default=None, help="API base URL")
+def repl(config, no_stream, model, base_url):
+    """Start a REPL session with streaming by default.
     
     Examples:
         yom repl
         yom repl -c agent.yaml
+        yom repl --no-stream
+        yom repl -m MiniMax-M2.7
     """
-    console.print("[bold green]yom REPL[/bold green]")
+    console.print("[bold green]yom REPL[/bold green] (streaming enabled by default)")
     console.print("Type 'exit' to quit, 'help' for commands\n")
     
     try:
+        agent_kwargs = {
+            "system_prompt": "You are helpful. Keep responses concise.",
+        }
+        
+        # Apply model and base_url from CLI args
+        if model:
+            agent_kwargs["model"] = model
+        if base_url:
+            agent_kwargs["base_url"] = base_url
+            # Also set env for provider
+            os.environ["YOM_BASE_URL"] = base_url
+        
         if config:
-            agent = Agent(config=config)
-        else:
-            agent = Agent(system_prompt="You are helpful. Keep responses concise.")
+            agent_kwargs["config"] = config
+        
+        agent = Agent(**agent_kwargs)
     except Exception as e:
         console.print(f"[red]Failed to create agent: {e}[/red]")
         sys.exit(1)
     
     session_id = None
     history = []
+    streaming = not no_stream
     
     while True:
         try:
@@ -636,8 +654,19 @@ def repl(config: Optional[str]):
   clear           - Clear screen
   session         - Show session ID
   reset           - Reset session
+  stream on/off   - Toggle streaming
   help            - Show help
 """)
+            continue
+        
+        if cmd == "stream on":
+            streaming = True
+            console.print("[dim]Streaming enabled[/dim]")
+            continue
+        
+        if cmd == "stream off":
+            streaming = False
+            console.print("[dim]Streaming disabled[/dim]")
             continue
         
         if cmd in ("history", "hist"):
@@ -655,7 +684,6 @@ def repl(config: Optional[str]):
             continue
         
         if cmd == "reset":
-            # Keep same agent but new session
             session_id = None
             history.clear()
             console.print("[dim]Session reset[/dim]")
@@ -664,11 +692,40 @@ def repl(config: Optional[str]):
         console.print("[dim]Thinking...[/dim]", end="\r")
         
         try:
-            result = agent.run_sync(user_input)
-            console.print("\r" + " " * 20 + "\r")
-            console.print(f"\n[bold green]Agent:[/bold green] {result}")
-            history.append(user_input)
-            history.append(result)
+            if streaming:
+                # Streaming mode with tool visibility
+                console.print("\r" + " " * 20 + "\r")
+                console.print("\n[bold green]Agent:[/bold green] ", end="")
+                
+                collected = []
+                tool_count = [0]
+                
+                def on_chunk(text):
+                    console.print(text, end="", flush=True)
+                    collected.append(text)
+                
+                def on_tool(name, args):
+                    tool_count[0] += 1
+                    # Show tool call inline
+                    console.print(f"\n[dim]\n[Using tool: {name}][/dim]", end="")
+                
+                asyncio.run(agent.run_stream(
+                    user_input,
+                    stream_callback=on_chunk,
+                    tool_callback=on_tool,
+                ))
+                
+                console.print()  # newline after streaming
+                result = "".join(collected)
+                history.append(user_input)
+                history.append(result)
+            else:
+                # Non-streaming mode
+                result = agent.run_sync(user_input)
+                console.print("\r" + " " * 20 + "\r")
+                console.print(f"\n[bold green]Agent:[/bold green] {result}")
+                history.append(user_input)
+                history.append(result)
         except Exception as e:
             console.print(f"\r[red]Error: {e}[/red]")
 
