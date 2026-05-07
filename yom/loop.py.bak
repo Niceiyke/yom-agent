@@ -198,20 +198,6 @@ class AgentLoop:
                 except json.JSONDecodeError:
                     pass
 
-
-        # Parse XML format: <invoke name="tool"><parameter name="x">value</parameter>
-        if not tool_calls:
-            xml_pattern = r'<invoke\s+name="([^"]+)"[^>]*>(.*?)</invoke>'
-            xml_matches = re.findall(xml_pattern, content, re.DOTALL)
-            for tool_name, params_block in xml_matches:
-                args = {}
-                param_pattern = r'<parameter\s+name="([^"]+)"[^>]*>([^<]+)</parameter>'
-                param_matches = re.findall(param_pattern, params_block)
-                for pname, pvalue in param_matches:
-                    args[pname] = pvalue
-                if args:
-                    tool_calls.append(ToolCall(name=tool_name, arguments=args))
-
         return tool_calls
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult:

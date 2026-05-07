@@ -698,25 +698,26 @@ def repl(config, no_stream, model, base_url):
                 console.print("\n[bold green]Agent:[/bold green] ", end="")
                 
                 collected = []
-                tool_count = [0]
                 
                 def on_chunk(text):
                     console.print(text, end="")
                     collected.append(text)
                 
                 def on_tool(name, args):
-                    tool_count[0] += 1
                     # Show tool call inline
                     console.print(f"\n[dim]\n[Using tool: {name}][/dim]", end="")
                 
-                asyncio.run(agent.run_stream(
-                    user_input,
-                    stream_callback=on_chunk,
-                    tool_callback=on_tool,
-                ))
+                try:
+                    result_dict = agent.run_stream_sync(
+                        user_input,
+                        stream_callback=on_chunk,
+                        tool_callback=on_tool,
+                    )
+                    result = result_dict.get("content", "") if result_dict else ""
+                except Exception as e:
+                    result = f"[Error: {e}]"
                 
                 console.print()  # newline after streaming
-                result = "".join(collected)
                 history.append(user_input)
                 history.append(result)
             else:

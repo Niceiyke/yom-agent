@@ -330,22 +330,7 @@ class Agent:
             result = agent.run_stream_sync("prompt", on_chunk, on_tool)
             # result = {'content': '...', 'tool_calls': [...]}
         """
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're inside an async context - use thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, self.run_stream(prompt, stream_callback, tool_callback))
-                    return future.result()
-            else:
-                return asyncio.run(self.run_stream(prompt, stream_callback, tool_callback))
-        except RuntimeError:
-            # Fallback: use thread
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, self.run_stream(prompt, stream_callback, tool_callback))
-                return future.result()
+        return asyncio.run(self.run_stream(prompt, stream_callback, tool_callback))
 
     def clear_session(self) -> None:
         """Clear the current session."""

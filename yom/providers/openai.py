@@ -212,12 +212,26 @@ class OpenAIProvider(BaseProvider):
         async for chunk in stream:
             if chunk.choices:
                 choice = chunk.choices[0]
-                if choice.delta.content:
+                content = choice.delta.content or ""
+                raw_data = {}
+                
+                if content:
                     has_content = True
+                
+                if choice.delta.tool_calls:
+                    has_content = True
+                    raw_data = {"tool_calls": [
+                        {"id": tc.id, "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in choice.delta.tool_calls
+                    ]}
+                
+                if content or raw_data:
                     yield StreamChunk(
-                        content=choice.delta.content,
+                        content=content,
                         is_final=False,
+                        raw=raw_data if raw_data else {},
                     )
+                
                 if choice.finish_reason:
                     yield StreamChunk(
                         content="",
