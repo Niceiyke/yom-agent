@@ -67,6 +67,9 @@ class Agent:
     tools: list[str | Tool] = field(default_factory=lambda: ["core"])
     runtime_id: str = "agent"
     model: str | None = None
+    provider: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
 
     # Session support
     session_id: str | None = None
@@ -187,7 +190,9 @@ class Agent:
             system_prompt=self._get_system_prompt_with_catalog(),
             tools=self._resolved_tools,
             default_model=self.model,
-            api_key=os.environ.get("MINIMAX_API_KEY") or os.environ.get("OPENAI_API_KEY"),
+            provider=self.provider,
+            base_url=self.base_url,
+            api_key=self.api_key or os.environ.get("MINIMAX_API_KEY") or os.environ.get("OPENAI_API_KEY"),
             session_backend=session_backend,
         )
 
@@ -217,9 +222,55 @@ class Agent:
         return result.final_message
 
     async def run_stream(self, prompt: str):
-        """Run a prompt with streaming responses."""
-        result = await self.run(prompt)
-        yield result
+        """Run a prompt with streaming responses.
+        
+        Yields chunks of the response as they arrive.
+        Usage:
+            async for chunk in agent.run_stream("Hello"):
+                print(chunk, end="")
+        """
+        runtime = await self._get_runtime()
+        
+        session_id = self.session_id
+        if session_id is None:
+            import uuid
+            session_id = str(uuid.uuid4())
+            self.session_id = session_id
+        
+        # Initialize session if needed
+        if self.session_backend:
+            state = await runtime._settings.session_backend.load(session_id)
+            if state is None:
+                from yom.models.state import AgentState
+                state = AgentState.create(
+                    runtime_id=runtime._settings.runtime_id,
+                    system_prompt=runtime._settings.system_prompt or "",
+                )
+                await runtime._settings.session_backend.save(session_id, state)
+        
+        # Add user message
+        from yom.models.messages import UserMessage
+        if hasattr(runtime, '_state') and runtime._state:
+            runtime._state.add_message(UserMessage(content=prompt))
+        
+        provider = runtime._get_provider()
+        model = runtime._settings.default_model or "MiniMax-Text-01"
+        config = runtime._get_completion_config()
+        
+        from yom.loop import AgentLoop
+        from yom.providers.base import Message
+        
+        loop = AgentLoop(provider=provider, tools=self._resolved_tools)
+        
+        # Stream the response
+        messages = [Message(role="user", content=prompt)]
+        async for chunk in loop.provider.stream(messages, model, config):
+            yield chunk.content
+        
+        # Also update session with response
+        full_response = ""
+        async for chunk in loop.provider.stream(messages, model, config):
+            full_response += chunk.content
 
     def clear_session(self) -> None:
         """Clear the current session."""
