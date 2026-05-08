@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 
 from yom import Agent, tool
 
-
 # =============================================================================
 # Domain Models - Define the data structures for our domain
 # =============================================================================
@@ -74,7 +73,7 @@ class SupportDeps:
 def lookup_customer(ctx: SupportDeps, email: str) -> str:
     """Look up customer information by email."""
     # In production, this would query a real database
-    return f'Customer found: John Doe, Pro account, customer since 2023'
+    return 'Customer found: John Doe, Pro account, customer since 2023'
 
 
 @tool
@@ -225,7 +224,7 @@ async def main():
     print("Remembered: My name is Alice")
     
     response = await customer_agent.run("What is my name?")
-    print(f"Query: What is my name?")
+    print("Query: What is my name?")
     print(f"Response: {response}")
     
     # Cleanup

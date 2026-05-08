@@ -7,15 +7,15 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
-from yom.models import AgentState, RuntimeRunResult
 from yom.config import RuntimeSettings
 from yom.deps import RuntimeDeps
+from yom.models import AgentState, RuntimeRunResult
+from yom.providers import CompletionConfig, create_provider
 from yom.tools.result import ToolResult
-from yom.providers import create_provider, CompletionConfig
 
 if TYPE_CHECKING:
-    from yom.tools import Tool
     from yom.providers.base import BaseProvider
+    from yom.tools import Tool
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ class AgentRuntime:
         self._deps = deps or RuntimeDeps()
         self._settings = settings
         self._tools: list[Tool | Callable] = list(settings.tools)
+        self._cancellation_token = None
 
     @property
     def settings(self) -> RuntimeSettings:
@@ -85,6 +86,10 @@ class AgentRuntime:
             if _get_tool_name(tool) == name:
                 return tool
         return None
+
+    def set_cancellation_token(self, token) -> None:
+        """Set cancellation token for subsequent loop executions."""
+        self._cancellation_token = token
 
     async def call_tool(self, name: str, input_data: dict[str, Any]) -> str:
         """Call a tool by name with input data."""
@@ -238,7 +243,7 @@ class CoreRuntime(AgentRuntime):
 
         from yom.loop import AgentLoop
 
-        loop = AgentLoop(provider=provider, tools=self._tools)
+        loop = AgentLoop(provider=provider, tools=self._tools, cancellation_token=self._cancellation_token)
         config_obj = loop.config
         config_obj.max_turns = self._settings.max_turns
 

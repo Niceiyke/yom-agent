@@ -114,7 +114,7 @@ async def demo_tool_factory():
         read = create_read_tool(cwd=project_dir)
         result = read("src/app.py")
         content = result.content if hasattr(result, 'content') else str(result)
-        print(f"\nReading 'src/app.py' relative to cwd:")
+        print("\nReading 'src/app.py' relative to cwd:")
         print(f"  Content: {content[:50]}...")
 
 
@@ -125,7 +125,6 @@ async def demo_event_subscription():
     print("="*60)
     
     from yom import Agent
-    from yom.events import AgentEventType
     
     agent = Agent(tools=["core"])
     
@@ -199,6 +198,7 @@ async def demo_pydantic_schema():
     
     try:
         from pydantic import BaseModel, Field
+
         from yom.tools import pydantic_to_schema
         
         class DeployInput(BaseModel):
@@ -278,7 +278,7 @@ def demo_rpc_protocol():
     print("P3: RPC Protocol")
     print("="*60)
     
-    from yom.rpc import JSONRPCRequest, JSONRPCResponse, error_response, ErrorCode
+    from yom.rpc import ErrorCode, JSONRPCRequest, JSONRPCResponse, error_response
     
     # Create request
     req = JSONRPCRequest(
@@ -308,9 +308,9 @@ async def demo_integration():
     print("="*60)
     
     from yom import Agent
-    from yom.tools import create_core_tools, define_tool
-    from yom.events import AgentEventType
     from yom.cancellation import CancellationToken
+    from yom.events import AgentEventType
+    from yom.tools import create_core_tools, define_tool
     
     # Create agent with custom tools
     def get_status() -> str:
@@ -339,12 +339,12 @@ async def demo_integration():
     agent.subscribe(track_events)
     
     # Use cancellation
-    token = CancellationToken()
-    
+    _token = CancellationToken()
+
     print("\nAgent ready with:")
     print(f"  - Tools: {[getattr(t, '_tool_name', str(t)) for t in agent._resolved_tools]}")
-    print(f"  - Event subscription: active")
-    print(f"  - Cancellation token: available")
+    print("  - Event subscription: active")
+    print("  - Cancellation token: available")
     
     # Emit a turn
     agent._emit_turn_start(1)

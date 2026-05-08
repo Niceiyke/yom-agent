@@ -1,7 +1,7 @@
 """Example yom plugin: Custom tools and middleware."""
 
-from yom.plugins import ToolPlugin, MiddlewarePlugin
 from yom import tool
+from yom.plugins import MiddlewarePlugin, ToolPlugin
 
 
 class ExampleToolsPlugin(ToolPlugin):

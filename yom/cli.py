@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
 from pathlib import Path
@@ -13,8 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from yom import Agent, RuntimeSettings, build_runtime, build_runtime_from_yaml
-from yom.models import RuntimeRunResult
+from yom import Agent
 
 console = Console()
 
@@ -62,7 +60,7 @@ def init(name: str, template: str, dir: Optional[str]):
     
     templates = {
         "basic": _create_basic_template,
-                "api": _create_api_template,
+        "api": _create_api_template,
         "multi-agent": _create_multi_agent_template,
     }
     
@@ -88,10 +86,8 @@ def _create_basic_template(target: Path, name: str):
     # Create agent.yaml
     agent_yaml = f'''runtime_id: "{name}"
 system_prompt: "You are a helpful assistant."
-
-provider:
-  name: "minimax"  # or openai, anthropic, etc.
-  model: "MiniMax-M2.7"
+provider: "openai"
+default_model: "gpt-4o-mini"
 
 tools:
   - "core"
@@ -107,8 +103,8 @@ session:
 from yom import Agent
 
 def main():
-    agent = Agent(config="agent.yaml")
-    
+    agent = Agent(tools=["core"])
+
     while True:
         prompt = input("You: ")
         if prompt.lower() in ("exit", "quit"):
@@ -199,7 +195,6 @@ def run(prompt: Optional[str], config: Optional[str], session_id: Optional[str],
             if "tools" in cfg:
                 agent._resolved_tools = agent._resolve_tools()
                 # Re-init with tools
-                original_tools = agent.tools
                 agent = Agent(
                     system_prompt=cfg.get("system_prompt", "You are helpful."),
                     model=provider_cfg.get("model"),
@@ -266,12 +261,11 @@ def chat(session_id: Optional[str], config: Optional[str], system_prompt: Option
     # Build agent
     try:
         if config:
-            agent = Agent(config=config, session_id=session_id)
-        else:
-            agent = Agent(
-                session_id=session_id or "chat",
-                system_prompt=system_prompt or "You are a helpful assistant.",
-            )
+            console.print("[yellow]Config file loading for chat is not yet wired to Agent. Using default Agent settings.[/yellow]")
+        agent = Agent(
+            session_id=session_id or "chat",
+            system_prompt=system_prompt or "You are a helpful assistant.",
+        )
     except Exception as e:
         console.print(f"[red]Failed to create agent: {e}[/red]")
         sys.exit(1)
@@ -317,7 +311,7 @@ def chat(session_id: Optional[str], config: Optional[str], system_prompt: Option
             if not history:
                 console.print("[dim]No history yet[/dim]")
             else:
-                for i, (role, msg) in enumerate(history):
+                for _i, (role, msg) in enumerate(history):
                     prefix = "[cyan]You[/cyan]" if role == "user" else "[green]Agent[/green]"
                     console.print(f"{prefix}: {msg[:80]}...")
             continue
@@ -464,9 +458,9 @@ def repl(config, no_stream, model, base_url):
                 
                 collected = []
                 
-                def on_chunk(text):
+                def on_chunk(text, _collected=collected):
                     console.print(text, end="")
-                    collected.append(text)
+                    _collected.append(text)
                 
                 def on_tool(name, args):
                     # Show tool call inline
@@ -544,18 +538,31 @@ def sessions_clear(session_id: str):
 @click.argument("session_id")
 @click.option("--output", "-o", default=None, help="Output file path")
 def sessions_export(session_id: str, output: Optional[str]):
-    """Export a session to JSON."""
+    """Export a session to JSON (file backend only)."""
     output_path = Path(output) if output else Path(f"{session_id}.json")
-    console.print(f"[green]Would export {session_id} to {output_path}[/green]")
+    session_file = Path("sessions") / f"{session_id}.json"
+    if not session_file.exists():
+        console.print(f"[red]Session file not found: {session_file}[/red]")
+        return
+    output_path.write_text(session_file.read_text())
+    console.print(f"[green]Exported {session_id} to {output_path}[/green]")
 
 
 @sessions.command("import")
 @click.argument("file")
 @click.option("--session-id", "-s", default=None, help="Session ID to import as")
 def sessions_import(file: str, session_id: Optional[str]):
-    """Import a session from JSON."""
-    sid = session_id or "imported"
-    console.print(f"[green]Would import {file} as session {sid}[/green]")
+    """Import a session from JSON (file backend only)."""
+    src = Path(file)
+    if not src.exists():
+        console.print(f"[red]File not found: {file}[/red]")
+        return
+    sid = session_id or src.stem
+    dest_dir = Path("sessions")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{sid}.json"
+    dest.write_text(src.read_text())
+    console.print(f"[green]Imported {file} as session {sid}[/green]")
 
 
 # =============================================================================
@@ -593,9 +600,15 @@ def debug(session: Optional[str], verbose: bool):
 @main.command()
 @click.argument("session_id")
 def inspect(session_id: str):
-    """Inspect session state."""
+    """Inspect session state from sessions/<id>.json."""
+    path = Path("sessions") / f"{session_id}.json"
+    if not path.exists():
+        console.print(f"[red]Session file not found: {path}[/red]")
+        return
     console.print(f"[bold]Inspecting session: {session_id}[/bold]")
-    console.print("[dim](Full inspection not yet implemented)[/dim]")
+    content = path.read_text()
+    preview = content if len(content) <= 2000 else content[:2000] + "\n... (truncated)"
+    console.print(Panel(preview, title=str(path)))
 
 
 # =============================================================================
@@ -621,7 +634,7 @@ def info():
     console.print("\n[bold]Available toolsets:[/bold]")
     from yom.toolsets import __all__
     for toolset in __all__:
-                    console.print(f"  [cyan]{toolset}[/cyan]")
+        console.print(f"  [cyan]{toolset}[/cyan]")
 
 
 # =============================================================================
@@ -636,7 +649,7 @@ def templates():
     table.add_column("Description")
     
     table.add_row("basic", "Simple agent with config file")
-        table.add_row("api", "FastAPI web service")
+    table.add_row("api", "FastAPI web service")
     table.add_row("multi-agent", "Supervisor with sub-agents")
     
     console.print(table)
@@ -644,13 +657,37 @@ def templates():
 
 
 # =============================================================================
-# TELEGRAM COMMANDS
+# TEMPLATE HELPERS
 # =============================================================================
 
-@main.group()
+def _create_api_template(target: Path, name: str):
+    """Create API template."""
+    _create_basic_template(target, name)
+    app_py = '''from fastapi import FastAPI
+from yom import Agent, create_agent_router
+
+app = FastAPI(title="yom API")
+agent = Agent(tools=["core"])
+app.include_router(create_agent_router(agent), prefix="/agent")
+'''
+    (target / "app.py").write_text(app_py)
 
 
+def _create_multi_agent_template(target: Path, name: str):
+    """Create multi-agent template."""
+    _create_basic_template(target, name)
+    agents_dir = target / ".yom" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    reviewer = '''---
+name: reviewer
+description: Reviews code for issues
+mode: subagent
+tools: [core]
+---
 
+You are a strict code reviewer.
+'''
+    (agents_dir / "reviewer.md").write_text(reviewer)
 
 
 # =============================================================================

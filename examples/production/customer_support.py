@@ -14,17 +14,16 @@ Run:
 """
 
 import asyncio
-import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from enum import Enum
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pydantic import BaseModel, Field
-from yom import Agent, tool, RunContext, AgentState
 
+from yom import Agent, RunContext, tool
 
 # =============================================================================
 # Domain Models
@@ -66,7 +65,7 @@ class SupportDeps:
 @tool
 def lookup_customer(ctx: RunContext[SupportDeps], email: str) -> str:
     """Look up customer information by email."""
-    return f"Customer: John Doe, Pro account, customer since 2023"
+    return "Customer: John Doe, Pro account, customer since 2023"
 
 
 @tool

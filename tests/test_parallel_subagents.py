@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from yom.subagent.core import SubAgentManager, SubAgentDefinition
+from yom.subagent.core import SubAgentDefinition, SubAgentManager
 from yom.testing import fake_agent
 
 
@@ -64,7 +64,7 @@ def run_parallel(task1: str, resp1: str, task2: str, resp2: str):
 def run_four_parallel(tasks, responses):
     """Run four agents in parallel."""
     async def run():
-        agents = [fake_agent(response=r).run(t) for t, r in zip(tasks, responses)]
+        agents = [fake_agent(response=r).run(t) for t, r in zip(tasks, responses, strict=False)]
         return await asyncio.gather(*agents)
     return asyncio.run(run())
 
@@ -143,7 +143,7 @@ class TestChainedSubagentSpawn:
         
         print(f"C: {result_c}")
         
-        assert result_c == f"Combined: RESULT_A + RESULT_B"
+        assert result_c == "Combined: RESULT_A + RESULT_B"
         print("\n[PASS] Chained spawn completed!")
 
     def test_chained_three_step(self, manager):

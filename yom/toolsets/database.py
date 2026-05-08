@@ -56,7 +56,6 @@ def query_db(
 ) -> str:
     """Execute a SQL query."""
     import sqlite3
-    import re
 
     # Basic SQL injection prevention for dry_run
     dangerous_keywords = ['DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE', 'INSERT', 'UPDATE', 'GRANT', 'REVOKE']
@@ -69,7 +68,7 @@ def query_db(
         else:
             # Check connection string for safety
             if not connection_string or "localhost" not in connection_string:
-                return f"Error: Cannot execute destructive queries on remote databases without explicit localhost connection"
+                return "Error: Cannot execute destructive queries on remote databases without explicit localhost connection"
 
     # SQLite in-memory for validation
     try:
@@ -80,7 +79,7 @@ def query_db(
         if dry_run:
             cursor.execute(f"EXPLAIN QUERY PLAN {sql}")
             plan = cursor.fetchall()
-            return f"[DRY-RUN] Query validated. Execution plan:\n" + "\n".join(str(row) for row in plan)
+            return "[DRY-RUN] Query validated. Execution plan:\n" + "\n".join(str(row) for row in plan)
         
         cursor.execute(sql)
         

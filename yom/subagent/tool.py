@@ -6,7 +6,6 @@ from typing import Any
 
 from yom.subagent.core import SubAgentManager, SubAgentRequest, get_default_manager
 
-
 SPAWN_TOOL_SCHEMA: dict[str, Any] = {
     "name": "spawn_agent",
     "description": "Spawn a sub-agent to handle specialized tasks. The sub-agent runs independently and returns a summary.",

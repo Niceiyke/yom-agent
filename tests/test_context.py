@@ -5,12 +5,11 @@ from __future__ import annotations
 import pytest
 
 from yom.context import (
+    ApproximateTokenCounter,
     ContextConfig,
     ContextManager,
     ContextStats,
     TruncationStrategy,
-    TokenCounter,
-    ApproximateTokenCounter,
     create_token_counter,
     estimate_tokens,
 )

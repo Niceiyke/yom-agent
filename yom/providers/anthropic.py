@@ -15,11 +15,18 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import os
-import time
 from typing import Any, AsyncIterator
 
-from yom.providers.base import BaseProvider, CompletionConfig, LLMResponse, Message, StreamChunk, Usage
+from yom.providers.base import (
+    BaseProvider,
+    CompletionConfig,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    Usage,
+)
 
 
 class AnthropicCompatibleProvider(BaseProvider):
@@ -85,10 +92,10 @@ class AnthropicCompatibleProvider(BaseProvider):
                 if attempt < config.max_retries:
                     error_str = str(exc).lower()
                     if "rate_limit" in error_str or "429" in str(exc):
-                        time.sleep((2 ** attempt) * 1.0)
+                        await asyncio.sleep((2 ** attempt) * 1.0)
                         continue
                     if "500" in str(exc):
-                        time.sleep((2 ** attempt) * 0.5)
+                        await asyncio.sleep((2 ** attempt) * 0.5)
                         continue
                 break
         raise last_error if last_error else RuntimeError("Request failed")
@@ -161,14 +168,12 @@ class AnthropicCompatibleProvider(BaseProvider):
 
         # Extract text content from all text blocks (skip thinking blocks)
         text = ""
-        thinking_preview = ""
         for block in response.content:
             if hasattr(block, "type") and block.type == "text":
                 text += block.text
             elif hasattr(block, "type") and block.type == "thinking":
-                # Store thinking for debug but don't expose to user (just the preview)
-                if hasattr(block, "thinking"):
-                    thinking_preview = block.thinking[:100] + "..." if len(getattr(block, "thinking", "")) > 100 else getattr(block, "thinking", "")
+                # Thinking blocks are intentionally ignored in user-visible content.
+                continue
 
         result = LLMResponse(
             content=text,

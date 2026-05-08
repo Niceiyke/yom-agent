@@ -13,7 +13,6 @@ Run:
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -26,8 +25,8 @@ async def main():
     print("=" * 60)
     print()
     
-    from yom import Agent, AgentState
-    from yom.skills import load_skills, format_skills_for_prompt
+    from yom import Agent
+    from yom.skills import format_skills_for_prompt, load_skills
     
     # Load skills
     print("Loading skills...")
@@ -36,14 +35,14 @@ async def main():
     print(f"  Found {len(loaded.skills)} skills: {[s.name for s in loaded.skills]}")
     
     # Format skills for system prompt
-    skills_catalog = format_skills_for_prompt(loaded.skills)
+    _skills_catalog = format_skills_for_prompt(loaded.skills)
     print()
     
     # Create coordinator with sub-agents
     agent = Agent(
         tools=["core", "spawn"],
         agents_dir=str(Path(__file__).parent.parent.parent / ".yom" / "agents"),
-        system_prompt=f"""You coordinate a code review team.
+        system_prompt="""You coordinate a code review team.
 
 Available sub-agents:
 - coder: Writes clean Python code

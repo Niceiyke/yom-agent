@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ToolResult(BaseModel):
@@ -24,10 +24,6 @@ class ToolResult(BaseModel):
     def name(self) -> str:
         """Alias for tool_name for compatibility."""
         return self.tool_name
-    @property
-    def success(self) -> bool:
-        return self.is_success
-    
     @classmethod
     def from_success(cls, tool_name: str, content: str, **kwargs: Any) -> "ToolResult":
         """Create a successful result."""

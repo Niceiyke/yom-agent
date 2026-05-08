@@ -26,11 +26,18 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import os
-import time
 from typing import Any, AsyncIterator
 
-from yom.providers.base import BaseProvider, CompletionConfig, LLMResponse, Message, StreamChunk, Usage
+from yom.providers.base import (
+    BaseProvider,
+    CompletionConfig,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    Usage,
+)
 
 
 class OpenAICompatibleProvider(BaseProvider):
@@ -98,10 +105,10 @@ class OpenAICompatibleProvider(BaseProvider):
                 if attempt < config.max_retries:
                     error_str = str(exc).lower()
                     if "rate_limit" in error_str or "429" in str(getattr(exc, "status_code", "")):
-                        time.sleep((2 ** attempt) * 1.0)
+                        await asyncio.sleep((2 ** attempt) * 1.0)
                         continue
                     if "500" in str(getattr(exc, "status_code", "")):
-                        time.sleep((2 ** attempt) * 0.5)
+                        await asyncio.sleep((2 ** attempt) * 0.5)
                         continue
                 break
         raise last_error if last_error else RuntimeError("Request failed")
@@ -178,7 +185,7 @@ class OpenAICompatibleProvider(BaseProvider):
         )
         
         # Validate (disabled by default, enable with YOM_VALIDATE=1)
-        from yom.providers.validation import validate_openai_response, validate_message_format
+        from yom.providers.validation import validate_message_format, validate_openai_response
         validate_message_format("openai", self._convert_messages(messages))
         validate_openai_response(result)
         

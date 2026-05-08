@@ -205,10 +205,10 @@ unsub()  # Unsubscribe
 
 ```python
 from yom import Agent
-from yom.toolsets.telegram import TelegramBot
+# Telegram integration not included in core package
 
 agent = Agent(tools=["core", "spawn"], agents_dir=".yom/agents")
-bot = TelegramBot(token="YOUR_BOT_TOKEN", agent=agent)
+# Build your own bot adapter around agent.run(...)
 
 await bot.poll()
 ```
@@ -228,12 +228,12 @@ app.include_router(router)
 ### RPC Server
 
 ```python
-from yom import Agent, serve_rpc
+from yom import Agent
 
 agent = Agent(tools=["core"])
 
 # Serve agent via RPC
-await serve_rpc(agent, host="0.0.0.0", port=8080)
+# Expose via your framework (e.g., FastAPI)
 
 # Client can connect
 client = create_rpc_client("http://localhost:8080")

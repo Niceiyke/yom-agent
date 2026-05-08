@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Generic, TypeVar, Self
+from typing import Any, Generic, Self, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
-
-from yom.tools.result import ToolResult
-
 
 # Type variable for output type
 T = TypeVar("T")

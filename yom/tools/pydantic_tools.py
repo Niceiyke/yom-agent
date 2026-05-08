@@ -29,9 +29,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 from functools import wraps
-from typing import Any, Callable, Generic, TypeVar, overload, Union
+from typing import Any, Callable, Generic, TypeVar, Union, overload
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from yom.tools.result import ToolResult
 

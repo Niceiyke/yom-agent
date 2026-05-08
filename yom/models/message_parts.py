@@ -8,11 +8,10 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
-
-from typing_extensions import Annotated, Self, TypeAliasType
+from typing import Any, Literal, TypeVar
 
 from pydantic import Discriminator
+from typing_extensions import Annotated
 
 
 def _now() -> datetime:

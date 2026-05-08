@@ -205,28 +205,18 @@ agent = Agent(provider=provider, model="claude-3-5-sonnet")
 ### Ollama (Local)
 
 ```python
-from yom.providers import OllamaProvider
+from yom.providers import OpenAICompatibleProvider
 from yom import Agent
 
-provider = OllamaProvider(
-    base_url="http://localhost:11434",
-    model="llama3"
+provider = OpenAICompatibleProvider(
+    base_url="http://localhost:11434/v1",
 )
-agent = Agent(provider=provider)
+agent = Agent(provider="openai", base_url="http://localhost:11434/v1", model="llama3")
 ```
 
 ### NVIDIA NIM
 
-```python
-from yom.providers import NVIDIAProvider
-from yom import Agent
-
-provider = NVIDIAProvider(
-    api_key="nvapi-...",
-    model="qwen/qwen3-coder-480b-a35b-instruct"
-)
-agent = Agent(provider=provider)
-```
+Use OpenAI-compatible endpoints with `OpenAICompatibleProvider`.
 
 ### Provider Factory
 
@@ -355,46 +345,7 @@ print(info)
 
 ## Telegram Bot
 
-### Basic Bot
-
-```python
-from yom import Agent
-from yom.toolsets.telegram import TelegramBot
-
-agent = Agent(tools=["core"])
-bot = TelegramBot(token="YOUR_TOKEN", agent=agent)
-
-# Polling
-await bot.poll()
-```
-
-### Bot with Sessions
-
-```python
-from pathlib import Path
-from yom import Agent
-from yom.toolsets.telegram import TelegramBot
-
-bot = TelegramBot(
-    token="YOUR_TOKEN",
-    agent=Agent(tools=["core"]),
-    storage_dir=Path("./telegram_sessions")
-)
-
-await bot.poll()
-```
-
-### Bot Commands
-
-Users can send these to the bot:
-```
-/start       - Welcome message
-/new work   - Create session "work"
-/switch work - Switch to "work" session
-/sessions    - List all sessions
-/reset       - Clear history
-/help       - Show commands
-```
+Telegram helpers are not included in the core package. Integrate your preferred Telegram SDK and call `agent.run(...)` in your handlers.
 
 ---
 

@@ -7,7 +7,7 @@ import asyncio
 import os
 import sys
 
-from yom.providers import create_provider, Message, CompletionConfig
+from yom.providers import CompletionConfig, Message, create_provider
 
 
 async def chat(

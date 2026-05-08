@@ -142,17 +142,6 @@ agent = Agent(tools=["core", search])
 
 ## Deployment
 
-### Telegram Bot
-
-```python
-from yom import Agent
-from yom.toolsets.telegram import TelegramBot
-
-agent = Agent(tools=["core", "spawn"], agents_dir=".yom/agents")
-bot = TelegramBot(token="TOKEN", agent=agent)
-await bot.poll()
-```
-
 ### FastAPI
 
 ```python
@@ -160,14 +149,6 @@ from yom import create_agent_router
 
 router = create_agent_router(agent)
 app.include_router(router)
-```
-
-### RPC Server
-
-```python
-from yom import serve_rpc
-
-await serve_rpc(agent, host="0.0.0.0", port=8080)
 ```
 
 ## CLI

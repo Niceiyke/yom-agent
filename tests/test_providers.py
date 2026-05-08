@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from yom.providers.base import CompletionConfig, LLMResponse, Message, Usage
-from yom.providers.openai import OpenAIProvider
 from yom.providers.anthropic import AnthropicProvider
+from yom.providers.base import CompletionConfig, LLMResponse, Message, Usage
 from yom.providers.google import GoogleProvider
+from yom.providers.openai import OpenAIProvider
 
 
 class TestCompletionConfig:

@@ -172,7 +172,7 @@ def _scan_dir_for_skills(dir_path: Path, source: str) -> tuple[list[Skill], list
 
 
 def load_skills(
-    cwd: Path | str = Path.cwd(),
+    cwd: Path | str | None = None,
     user_dir: Path | str | None = None,
     skill_paths: list[Path | str] | None = None,
     include_defaults: bool = True,
@@ -194,7 +194,7 @@ def load_skills(
     Returns:
         LoadedSkills with discovered skills and any diagnostics
     """
-    cwd = Path(cwd)
+    cwd = Path(cwd) if cwd is not None else Path.cwd()
     if user_dir is None:
         user_dir = Path.home() / ".yom"
     user_dir = Path(user_dir)

@@ -4,23 +4,27 @@ from __future__ import annotations
 
 import asyncio
 import os
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, AsyncIterator
+from typing import TYPE_CHECKING, Any, Callable
 
+from yom.cancellation import CancellationToken, _register_abort_token, _unregister_abort_token
 from yom.config import RuntimeSettings
+from yom.events import AgentEvent, AgentEventType
 from yom.factories import build_runtime
-from yom.tools import CORE_TOOLS
 from yom.session import FileSessionBackend, InMemorySessionBackend
 from yom.subagent import (
-    SubAgentManager,
     SubAgentDefinition,
-    create_spawn_tool,
+    SubAgentManager,
     create_catalog_tool,
+    create_spawn_tool,
 )
-from yom.events import AgentEvent, AgentEventType
-from yom.cancellation import CancellationToken, _register_abort_token, _unregister_abort_token
+from yom.tools import CORE_TOOLS
+
+if TYPE_CHECKING:
+    from yom.models.messages import Message as YomModelMessage
+    from yom.models.state import AgentState
+    from yom.providers.base import BaseProvider
 
 Tool = Callable
 
@@ -130,11 +134,18 @@ class Agent:
     def _resolve_tools(self) -> list[Tool]:
         """Resolve tool specs to actual tools."""
         from yom.toolsets import (
-            http_request, get_json,
-            query_db, db_schema,
-            github_api, github_read_file, github_search,
-            s3_put, s3_get, s3_list,
-            shell, shell_script,
+            db_schema,
+            get_json,
+            github_api,
+            github_read_file,
+            github_search,
+            http_request,
+            query_db,
+            s3_get,
+            s3_list,
+            s3_put,
+            shell,
+            shell_script,
         )
         
         TOOLSET_TOOLS = {
@@ -235,7 +246,7 @@ class Agent:
     # =========================================================================
     
     @property
-    def state(self) -> "yom.models.state.AgentState | None":
+    def state(self) -> "AgentState | None":
         """Get the current agent state.
         
         Returns:
@@ -250,7 +261,7 @@ class Agent:
         return self._state
     
     @property
-    def session_messages(self) -> list["yom.models.messages.Message"]:
+    def session_messages(self) -> list["YomModelMessage"]:
         """Get messages from current session.
         
         Returns:
@@ -265,7 +276,7 @@ class Agent:
     # =========================================================================
     
     @property
-    def llm_provider(self) -> "yom.providers.base.BaseProvider | None":
+    def llm_provider(self) -> "BaseProvider | None":
         """Get the underlying LLM provider.
         
         Returns:
@@ -536,12 +547,12 @@ class Agent:
             await runtime._settings.session_backend.save(session_id, state)
         
         self._state = state
-        state.add_user_message(prompt)
-        
+
         # Emit turn start
         self._emit_turn_start(state.current_turn)
         
         try:
+            runtime.set_cancellation_token(cancellation_token)
             result = await runtime.run_prompt(
                 prompt=prompt,
                 session_id=session_id,
@@ -636,7 +647,7 @@ class Agent:
                             import json
                             try:
                                 args = json.loads(args)
-                            except:
+                            except Exception:
                                 pass
                         from yom.loop import ToolCall
                         tc_obj = ToolCall(
@@ -684,7 +695,7 @@ class Agent:
                 
                 # Build messages for continued turn
                 messages.append(Message(role="assistant", content=response_content))
-                for tr, tc in zip(tool_results, collected_tool_calls):
+                for tr, tc in zip(tool_results, collected_tool_calls, strict=False):
                     tc_id = tc.tool_call_id or tc.id or f"call_{id(tc)}"
                     messages.append(Message(
                         role="tool",
@@ -856,9 +867,3 @@ class Agent:
             return []
         return self._subagent_manager.registry.list_agents()
 
-
-# Type alias for internal use
-import yom.models.state
-import yom.models.messages
-import yom.providers.base
-from typing import Any

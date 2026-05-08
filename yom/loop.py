@@ -8,9 +8,9 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
-from yom.models import Message, ToolMessage as YomMessage
+from yom.models import ToolMessage as YomMessage
 from yom.providers import (
     BaseProvider,
     CompletionConfig,
@@ -371,7 +371,10 @@ class AgentLoop:
                     tc.id = f"call_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
                 elif tc.tool_call_id and not tc.id:
                     tc.id = tc.tool_call_id
-            
+
+            all_tool_calls.extend(tool_calls)
+            total_tool_calls += len(tool_calls)
+
             # Execute all tools IN PARALLEL (they are independent)
             # Execute tools concurrently but collect results in ORIGINAL order
             async def execute_one(tc: ToolCall, index: int):
@@ -388,16 +391,14 @@ class AgentLoop:
                 execute_fn = getattr(tool, "execute", None) or tool
                 
                 try:
-                    result = execute_fn(**tc.arguments)
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    elif asyncio.iscoroutinefunction(execute_fn):
-                        result = await result
+                    if asyncio.iscoroutinefunction(execute_fn):
+                        result = await execute_fn(**tc.arguments)
                     else:
-                        # Sync function - run in executor
                         loop = asyncio.get_event_loop()
                         result = await loop.run_in_executor(None, lambda: execute_fn(**tc.arguments))
-                    
+                        if asyncio.iscoroutine(result):
+                            result = await result
+
                     if hasattr(result, "content"):
                         return index, ToolResult(name=tc.name, content=result.content)
                     return index, ToolResult(name=tc.name, content=str(result))
@@ -447,7 +448,7 @@ class AgentLoop:
                 # Store tool_calls info for convert_messages to include
                 assistant_msg.metadata["_tool_calls"] = tc_list
 
-            for result, tc in zip(tool_results, tool_calls):
+            for result, tc in zip(tool_results, tool_calls, strict=False):
                 tc_id = tc.id or tc.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
                 tool_msg = Message(
                     role="tool",
@@ -489,11 +490,7 @@ class AgentLoop:
             if tool_calls:
                 msg_dict['tool_calls'] = tool_calls
             
-            # Use ToolMessage for tool role messages
-            if role == "tool":
-                result.append(ToolMessage(**msg_dict))
-            else:
-                result.append(Message(**msg_dict))
+            result.append(Message(**msg_dict))
         return result
 
     async def stream_turn(

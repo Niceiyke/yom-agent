@@ -7,11 +7,11 @@ from pathlib import Path
 
 import yaml
 
+from yom.agent_runtime import AgentRuntime, CoreRuntime
 from yom.config import RuntimeSettings
 from yom.deps import RuntimeDeps
-from yom.agent_runtime import AgentRuntime, CoreRuntime
-from yom.session import FileSessionBackend, InMemorySessionBackend
 from yom.logging_config import setup_logging
+from yom.session import FileSessionBackend, InMemorySessionBackend
 
 
 def build_runtime(
@@ -90,7 +90,7 @@ def build_runtime_from_yaml(
     if "tools" in config:
         tools = []
         for tool_spec in config["tools"]:
-            if isinstance(tool_spec, dict):
+            if isinstance(tool_spec, (dict, str)) or callable(tool_spec):
                 tools.append(tool_spec)
         config["tools"] = tools
 

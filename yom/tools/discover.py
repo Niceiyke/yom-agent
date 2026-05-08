@@ -9,7 +9,6 @@ from typing import Any, Iterator
 
 from yom.tools.registry import ToolRegistry
 
-
 TOOL_ATTR = "_tool_name"
 
 

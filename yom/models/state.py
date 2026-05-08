@@ -8,7 +8,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, Field
 
-from yom.models.messages import Message, UserMessage, AssistantMessage, ToolMessage
+from yom.models.messages import AssistantMessage, Message, ToolMessage, UserMessage
 
 
 def _now() -> datetime:
@@ -116,4 +116,3 @@ class AgentState(BaseModel):
 
 
 # Import for convenience
-from yom.models.messages import UserMessage, AssistantMessage, ToolMessage

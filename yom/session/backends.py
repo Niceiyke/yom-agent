@@ -84,7 +84,6 @@ class InMemorySessionBackend(SessionBackend):
         self._sessions.pop(session_id, None)
 
     async def list(self, runtime_id: str) -> list[str]:
-        now = time.time()
         expired = []
         result = []
         for sid, (state, ts) in self._sessions.items():

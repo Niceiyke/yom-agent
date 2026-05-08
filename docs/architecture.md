@@ -271,7 +271,7 @@ Multi-provider LLM support.
 
 ```python
 from yom import Agent
-from yom.providers import OpenAIProvider, AnthropicProvider, OllamaProvider
+from yom.providers import OpenAICompatibleProvider, AnthropicCompatibleProvider
 
 # Default (checks MINIMAX_API_KEY, then OPENAI_API_KEY)
 agent = Agent()

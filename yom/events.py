@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import Any, Self
+from typing import Any
 
 from pydantic import BaseModel, Field
 

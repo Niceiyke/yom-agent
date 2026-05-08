@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from yom.loop import AgentLoop, AgentLoopConfig, ToolCall, ToolResult, create_agent_loop
-from yom.providers.base import CompletionConfig, LLMResponse, Message
+from yom.providers.base import LLMResponse, Message
 
 
 class TestAgentLoopConfig:

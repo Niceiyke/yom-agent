@@ -10,10 +10,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from yom.models import AgentState
 from yom.config import RuntimeSettings
 from yom.factories import build_runtime
-
+from yom.models import AgentState
 
 PROMPT_INJECTION_PATTERNS = [
     re.compile(r"ignore\s+(all\s+)?previous\s+instructions?", re.IGNORECASE),

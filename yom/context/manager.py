@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from yom.models.messages import Message
+    from yom.context.tokenizer import TokenCounter
 
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class ContextManager:
         token_counter: "TokenCounter | None" = None,
     ):
         self.config = config or ContextConfig()
-        from yom.context.tokenizer import TokenCounter, create_token_counter
+        from yom.context.tokenizer import create_token_counter
         self._token_counter = token_counter or create_token_counter(
             self.config.tokenizer_backend
         )
@@ -225,14 +225,12 @@ class ContextManager:
         )
 
         last_msgs = messages[-4:]
-        result = [msg for msg in messages if msg not in last_msgs]
 
         summary_tokens = self.count_tokens(summary)
         last_tokens = self.count_messages_tokens(last_msgs)
         available = max_tokens - summary_tokens - last_tokens
 
         if available < 0:
-            result = []
             last_msgs = self._truncate_from_front(last_msgs, max_tokens - summary_tokens)
 
         return [{"role": "system", "content": summary}] + last_msgs

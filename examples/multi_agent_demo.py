@@ -87,7 +87,6 @@ class RateLimitedAgent:
 async def run_demo(model: str | None = None, session_id: str = "demo-session"):
     """Run the multi-agent demo with rate limiting."""
     from yom import Agent
-    from yom.events import AgentEventType
     
     print("=" * 60)
     print("yom Multi-Agent Production Demo")

@@ -7,10 +7,11 @@ These examples demonstrate the Pydantic-enhanced features including:
 """
 
 from dataclasses import dataclass
-from pydantic import BaseModel, Field
-from yom import Agent, tool, agent_tool, RunContext, AgentState
-from yom.models import validate_output, AgentOutput, OutputValidationError
 
+from pydantic import BaseModel, Field
+
+from yom import Agent, RunContext, agent_tool, tool
+from yom.models import AgentOutput, OutputValidationError, validate_output
 
 # =============================================================================
 # Example 1: Basic Tool with @tool decorator
@@ -117,7 +118,7 @@ def demonstrate_agent_output_class():
 
 def demonstrate_models():
     """Show how Pydantic models provide validation."""
-    from yom.models import AgentState, Message, UserMessage, AssistantMessage, MessageRole
+    from yom.models import AgentState
 
     # Create state with validation
     state = AgentState.create(
@@ -140,7 +141,7 @@ def demonstrate_models():
     # Invalid data raises error (validated by Pydantic)
     try:
         bad_data = {"session_id": "s1", "runtime_id": "r1", "messages": [{"role": "invalid", "content": "x"}]}
-        invalid = AgentState.from_dict(bad_data)
+        AgentState.from_dict(bad_data)
     except (ValueError, Exception) as e:
         print(f"Validation caught: {type(e).__name__}")
 

@@ -6,23 +6,9 @@ import shlex
 
 from yom.tools import tool
 
-
 # Whitelist of safe commands
 SAFE_COMMANDS = {
-    "ls", "dir", "cat", "head", "tail", "grep", "find", "pwd", "cd",
-    "echo", "printf", "wc", "sort", "uniq", "awk", "sed", "cut", "tr",
-    "jq", "curl", "wget", "git", "docker", "docker-compose", "kubectl",
-    "helm", "terraform", "ansible", "make", "cmake", "npm", "yarn", "pnpm",
-    "pip", "pip3", "poetry", "uv", "python", "python3", "node", "npm",
-    "go", "cargo", "rustc", "java", "javac", "ruby", "php", "perl",
-    "rsync", "scp", "ssh", "ftp", "sftp", "tar", "zip", "unzip",
-    "gzip", "gunzip", "bzip2", "xz", "md5sum", "sha256sum", "sha1sum",
-    "base64", "xxd", "hexdump", "od", "strings", "file", "stat",
-    "lsblk", "df", "du", "free", "top", "ps", "kill", "pgrep",
-    "which", "whereis", "type", "command", "env", "export", "printenv",
-    "date", "cal", "uptime", "hostname", "id", "whoami", "groups",
-    "chmod", "chown", "chgrp", "touch", "mkdir", "rmdir", "cp", "mv", "rm",
-    "ln", "readlink", "realpath", "dirname", "basename", "mktemp",
+    "ls", "cat", "head", "tail", "grep", "find", "pwd", "echo", "printf", "wc", "sort", "uniq", "awk", "sed", "cut", "tr", "jq", "file", "stat", "which", "whereis", "type", "command", "env", "printenv", "date", "cal", "uptime", "hostname", "id", "whoami", "groups", "realpath", "dirname", "basename", "md5sum", "sha256sum", "sha1sum", "base64", "xxd", "hexdump", "od", "strings"
 }
 
 
@@ -94,7 +80,7 @@ def shell(
         return f"Error: Timeout cannot exceed 300 seconds (got {timeout})"
 
     if timeout < 1:
-        return f"Error: Timeout must be at least 1 second"
+        return "Error: Timeout must be at least 1 second"
 
     async def run():
         try:

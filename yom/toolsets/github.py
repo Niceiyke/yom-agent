@@ -53,6 +53,7 @@ def github_api(
 ) -> str:
     """Make a GitHub API request."""
     import os
+
     import httpx
 
     token = token or os.environ.get("GITHUB_TOKEN")
@@ -119,7 +120,6 @@ def github_read_file(
     token: str | None = None,
 ) -> str:
     """Read a file from GitHub repository."""
-    import os
     
     endpoint = f"/repos/{owner}/{repo}/contents/{path}"
     if ref:

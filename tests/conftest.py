@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Generator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from yom import AgentState, Message
-from yom.models.messages import UserMessage, AssistantMessage
 from yom.providers import CompletionConfig, LLMResponse, Usage
 
 

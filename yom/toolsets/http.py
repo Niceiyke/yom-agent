@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from yom.tools import tool
 
@@ -81,8 +82,8 @@ def http_request(
     
     For async execution with parallel requests, use http_request_async.
     """
+
     import httpx
-    import asyncio
 
     try:
         header_dict = {}

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import tempfile
-from pathlib import Path
 
 import pytest
 
 from yom import AgentState
-from yom.models.messages import UserMessage
 from yom.session import FileSessionBackend, InMemorySessionBackend
 
 

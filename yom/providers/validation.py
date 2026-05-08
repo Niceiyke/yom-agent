@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 
+from yom.providers.base import LLMResponse
 
 # Validation is disabled by default for performance
 # Enable with YOM_VALIDATE=1 or YOM_DEBUG=1
@@ -170,9 +171,6 @@ def _validate_google_message(msg: dict) -> None:
         if not isinstance(part, dict):
             raise ValidationError("Google part must be dict")
 
-
-# Import at bottom to avoid circular imports
-from yom.providers.base import LLMResponse
 
 __all__ = [
     "ValidationError",

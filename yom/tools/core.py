@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-import glob as glob_module
-
 import re
 import shlex
-from functools import partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
-from yom.tools import tool
+from yom.tools.pydantic_tools import tool
 
 ALLOWED_DIRS = {"~": Path.home(), "/tmp": Path("/tmp")}
 ALLOWED_COMMANDS: list[str] | None = None
+
+
+def _is_within(path: Path, base: Path) -> bool:
+    """Return True if path is within base directory."""
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
 
 
 def set_allowed_commands(commands: list[str] | None) -> None:
@@ -28,9 +34,9 @@ def _validate_path(path: str, base_dir: str = "~") -> Path | str:
     abs_path = Path(path).expanduser().resolve()
     base = ALLOWED_DIRS.get(base_dir, Path(base_dir).expanduser().resolve())
 
-    if not str(abs_path).startswith(str(base)):
+    if not _is_within(abs_path, base):
         for allowed_base in ALLOWED_DIRS.values():
-            if str(abs_path).startswith(str(allowed_base)):
+            if _is_within(abs_path, allowed_base):
                 return abs_path
         # Check protected directories
         protected = {"/etc", "/sys", "/proc"}
@@ -117,11 +123,11 @@ def create_read_tool(
             abs_path = Path(path).expanduser().resolve()
         
         # Check against allowed dirs
-        for name, base in effective_allowed.items():
-            if str(abs_path).startswith(str(base)):
+        for _, base in effective_allowed.items():
+            if _is_within(abs_path, base):
                 return abs_path
         # Check if it's within cwd
-        if str(abs_path).startswith(str(cwd_path)):
+        if _is_within(abs_path, cwd_path):
             return abs_path
         return f"Error: Path '{path}' is outside allowed directories"
     
@@ -176,10 +182,10 @@ def create_write_tool(
         else:
             abs_path = Path(path).expanduser().resolve()
         
-        for name, base in effective_allowed.items():
-            if str(abs_path).startswith(str(base)):
+        for _, base in effective_allowed.items():
+            if _is_within(abs_path, base):
                 return abs_path
-        if str(abs_path).startswith(str(cwd_path)):
+        if _is_within(abs_path, cwd_path):
             return abs_path
         return f"Error: Path '{path}' is outside allowed directories"
     
@@ -221,10 +227,10 @@ def create_edit_tool(
     
     def validate_with_cwd(path: str) -> Path | str:
         abs_path = Path(path).expanduser().resolve()
-        for name, base in effective_allowed.items():
-            if str(abs_path).startswith(str(base)):
+        for _, base in effective_allowed.items():
+            if _is_within(abs_path, base):
                 return abs_path
-        if str(abs_path).startswith(str(cwd_path)):
+        if _is_within(abs_path, cwd_path):
             return abs_path
         return f"Error: Path '{path}' is outside allowed directories"
     
@@ -316,7 +322,7 @@ def create_bash_tool(
         except asyncio.TimeoutError:
             return f"Error: Command timed out after {timeout} seconds"
         except PermissionError:
-            return f"Error: Permission denied to execute command"
+            return "Error: Permission denied to execute command"
         except Exception as e:
             return f"Error executing command: {e}"
     
@@ -336,10 +342,10 @@ def create_grep_tool(
     
     def validate_with_cwd(path: str) -> Path | str:
         abs_path = Path(path).expanduser().resolve()
-        for name, base in effective_allowed.items():
-            if str(abs_path).startswith(str(base)):
+        for _, base in effective_allowed.items():
+            if _is_within(abs_path, base):
                 return abs_path
-        if str(abs_path).startswith(str(cwd_path)):
+        if _is_within(abs_path, cwd_path):
             return abs_path
         return f"Error: Path '{path}' is outside allowed directories"
     
@@ -405,10 +411,10 @@ def create_glob_tool(
     
     def validate_with_cwd(path: str) -> Path | str:
         abs_path = Path(path).expanduser().resolve()
-        for name, base in effective_allowed.items():
-            if str(abs_path).startswith(str(base)):
+        for _, base in effective_allowed.items():
+            if _is_within(abs_path, base):
                 return abs_path
-        if str(abs_path).startswith(str(cwd_path)):
+        if _is_within(abs_path, cwd_path):
             return abs_path
         return f"Error: Path '{path}' is outside allowed directories"
     
@@ -598,7 +604,7 @@ async def bash(command: str, cwd: str | None = None, timeout: int = 30) -> str:
     except asyncio.TimeoutError:
         return f"Error: Command timed out after {timeout} seconds"
     except PermissionError:
-        return f"Error: Permission denied to execute command"
+        return "Error: Permission denied to execute command"
     except Exception as e:
         return f"Error executing command: {e}"
 

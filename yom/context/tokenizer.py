@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from typing import Protocol
 
 
@@ -88,15 +89,11 @@ def create_token_counter(
     elif backend == "approximate":
         return ApproximateTokenCounter()
     elif backend == "auto":
-        try:
-            import tiktoken
+        if importlib.util.find_spec("tiktoken") is not None:
             return TiktokenCounter()
-        except ImportError:
-            try:
-                from transformers import AutoTokenizer
-                return HuggingFaceTokenizerCounter()
-            except ImportError:
-                return ApproximateTokenCounter()
+        if importlib.util.find_spec("transformers") is not None:
+            return HuggingFaceTokenizerCounter()
+        return ApproximateTokenCounter()
     else:
         return ApproximateTokenCounter()
 

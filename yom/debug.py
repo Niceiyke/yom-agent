@@ -10,11 +10,10 @@ Or programmatically:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import traceback
-import logging
-
 
 DEBUG = os.environ.get("YOM_DEBUG", "0") == "1"
 TRACE = os.environ.get("YOM_TRACE", "0") == "1"

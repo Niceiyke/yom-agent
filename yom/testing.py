@@ -21,8 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from yom import Agent
-from yom.providers import BaseProvider, LLMResponse, Message, CompletionConfig, Usage
-
+from yom.providers import BaseProvider, CompletionConfig, LLMResponse, Message, Usage
 
 # =============================================================================
 # Mock Provider

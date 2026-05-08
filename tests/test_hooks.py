@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock
 
 import pytest
-
-from yom.hooks import HookRegistry, HookResult, block, allow
+from yom.hooks import HookRegistry, HookResult, allow, block
 
 
 class TestHookRegistry:

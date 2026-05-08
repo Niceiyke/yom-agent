@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from yom.skills.core import (
-    Skill,
+    LOAD_SKILL_SCHEMA,
     LoadedSkills,
-    load_skills,
+    Skill,
+    append_skill_to_state,
     format_skills_for_prompt,
     get_skill_content,
-    append_skill_to_state,
-    LOAD_SKILL_SCHEMA,
+    load_skills,
 )
 
 __all__ = [
@@ -37,7 +37,8 @@ async def load_skill_tool(input_data: dict, state: Any, cwd: str | None = None) 
         Success or error message
     """
     from pathlib import Path
-    from yom.skills.core import load_skills, append_skill_to_state, get_skill_content
+
+    from yom.skills.core import append_skill_to_state, get_skill_content, load_skills
 
     name = input_data.get("name")
     if not isinstance(name, str) or not name:

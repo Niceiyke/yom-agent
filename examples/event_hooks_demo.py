@@ -46,13 +46,13 @@ async def demo_event_subscription():
     try:
         result = await agent.run("Say 'hello world' in exactly those words.")
         print()
-        print(f"--- Result ---")
+        print("--- Result ---")
         print(result)
     except Exception as e:
         print(f"Error: {e}")
     print()
     
-    print(f"--- Events via subscription ---")
+    print("--- Events via subscription ---")
     for event in events:
         print(f"  {event}")
     print(f"Total events: {len(events)}")

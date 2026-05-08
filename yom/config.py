@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any,Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from yom.context import ContextConfig
     from yom.session.backends import SessionBackend
     from yom.tools import Tool
-    from yom.context import ContextConfig
 
 
 # EventHook type - placeholder for hook types

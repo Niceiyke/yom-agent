@@ -8,21 +8,19 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
-from yom import Agent, AgentState
-from yom.cancellation import CancellationToken, CancellationScope
-from yom.events import AgentEvent, AgentEventType
 from yom.hooks import HookRegistry
+
+from yom import Agent
+from yom.cancellation import CancellationScope, CancellationToken
+from yom.events import AgentEvent, AgentEventType
 from yom.tools import (
+    agent_tool,
+    create_bash_tool,
     create_core_tools,
     create_read_tool,
     create_write_tool,
-    create_bash_tool,
     tool,
-    agent_tool,
 )
-from yom.testing import MockProvider, fake_agent
-
 
 # =============================================================================
 # P0: STATE ACCESS TESTS
@@ -216,7 +214,7 @@ class TestToolFactory:
             
             outside_path = "/etc/passwd" if tmpdir != "/etc" else "/tmp"
             result = read(outside_path)
-            content = result.content if hasattr(result, 'content') else str(result)
+            _content = result.content if hasattr(result, 'content') else str(result)
             assert True
 
     def test_create_write_tool(self):
@@ -576,7 +574,7 @@ class TestRPCProtocol:
 
     def test_jsonrpc_response(self):
         """Test JSON-RPC response creation."""
-        from yom.rpc import JSONRPCResponse, error_response, ErrorCode
+        from yom.rpc import ErrorCode, JSONRPCResponse, error_response
         
         resp = JSONRPCResponse(id=1, result={"content": "Hello!"})
         data = resp.to_dict()
@@ -622,8 +620,6 @@ class TestIntegration:
 
     async def test_timeout_protection(self):
         """Use CancellationToken for timeout protection."""
-        agent = Agent(tools=["core"])
-        
         token = CancellationToken()
         
         asyncio.create_task(token.cancel_after(0.1))
@@ -633,7 +629,7 @@ class TestIntegration:
             token.cancel()
             with pytest.raises(asyncio.CancelledError):
                 token.throw_if_cancelled()
-        except:
+        except Exception:
             pass
 
     def test_tool_with_custom_working_directory(self):
@@ -647,8 +643,6 @@ class TestIntegration:
                 cwd=project_dir,
                 allowed_commands=["cat", "ls", "python"]
             )
-            
-            agent = Agent(tools=tools)
             
             tool_names = [getattr(t, "_tool_name", None) for t in tools]
             assert "read" in tool_names
