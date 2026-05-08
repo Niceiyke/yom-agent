@@ -103,8 +103,19 @@ class ToolDecorator:
         # Check if function uses RunContext for dependency injection
         uses_run_context = self._uses_run_context(func)
 
+        def bind_args(args, kwargs):
+            if not args:
+                return kwargs
+            try:
+                bound = inspect.signature(func).bind_partial(*args, **kwargs)
+                return dict(bound.arguments)
+            except TypeError:
+                # Let the wrapped function raise a normal Python call error below.
+                return kwargs
+
         @wraps(func)
-        def sync_wrapper(**kwargs):
+        def sync_wrapper(*args, **kwargs):
+            kwargs = bind_args(args, kwargs)
             # Validate with Pydantic model if provided
             if self.input_model:
                 try:
@@ -127,7 +138,8 @@ class ToolDecorator:
             return ToolResult(tool_name=tool_name, content=str(result))
 
         @wraps(func)
-        async def async_wrapper(**kwargs):
+        async def async_wrapper(*args, **kwargs):
+            kwargs = bind_args(args, kwargs)
             # Validate with Pydantic model if provided
             if self.input_model:
                 try:
@@ -162,6 +174,8 @@ class ToolDecorator:
         sig = inspect.signature(func)
         for param in sig.parameters.values():
             ann = param.annotation
+            if param.name in {"ctx", "context", "run_context"}:
+                return True
             # Direct type match
             if ann is RunContext:
                 return True
@@ -210,6 +224,8 @@ class ToolDecorator:
             ann = param.annotation
             
             # Skip RunContext parameters - they're injected, not from LLM
+            if pname in {"ctx", "context", "run_context"}:
+                continue
             if ann is RunContext:
                 continue
             origin = getattr(ann, "__origin__", None)
@@ -259,11 +275,11 @@ def _pydantic_model_to_schema(model: type[BaseModel]) -> dict:
             prop["description"] = field_info.description
 
         default = field_info.default
-        # Check if default is actually set (not a Required/default missing sentinel)
-        if default is not None and default is not PydanticUndefined:
-            prop["default"] = default
-        elif field_info.is_required():
+        # Check required before default: Pydantic's missing sentinel can vary by version.
+        if field_info.is_required():
             required.append(field_name)
+        elif default is not None and default is not PydanticUndefined:
+            prop["default"] = default
 
         properties[field_name] = prop
 
@@ -382,6 +398,22 @@ def tool(
     if func is not None:
         return ToolDecorator(input_model=input_model)(func)
     return ToolDecorator(name=name, description=description, parameters=parameters, schema=schema, input_model=input_model)
+
+
+def define_tool(
+    *,
+    name: str,
+    description: str,
+    schema: dict | None = None,
+    parameters: dict | None = None,
+) -> Callable[[F], F]:
+    """Define a tool with explicit metadata/schema."""
+    return tool(name=name, description=description, schema=schema, parameters=parameters)
+
+
+def pydantic_to_schema(model: type[BaseModel]) -> dict:
+    """Convert a Pydantic model to a tool JSON schema."""
+    return _pydantic_model_to_schema(model)
 
 
 def agent_tool(

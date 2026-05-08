@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import re
 import time
@@ -68,9 +69,9 @@ class ToolCall:
     arguments: dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
-        # Generate unique ID if not provided
-        if self.id is None and self.tool_call_id is None:
-            self.id = f"call_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        # IDs are assigned only when sending tool results back to providers.
+        # Keep freshly-created ToolCall objects clean for stable serialization.
+        pass
     
     @property
     def unique_id(self) -> str:
@@ -372,6 +373,15 @@ class AgentLoop:
                 elif tc.tool_call_id and not tc.id:
                     tc.id = tc.tool_call_id
 
+            remaining_tool_calls = max(0, self.config.max_tool_calls - total_tool_calls)
+            if remaining_tool_calls <= 0:
+                return (
+                    f"Max tool calls ({self.config.max_tool_calls}) reached. Last response: {response.content}",
+                    all_tool_calls,
+                    total_tool_calls,
+                )
+            tool_calls = tool_calls[:remaining_tool_calls]
+
             all_tool_calls.extend(tool_calls)
             total_tool_calls += len(tool_calls)
 
@@ -391,7 +401,7 @@ class AgentLoop:
                 execute_fn = getattr(tool, "execute", None) or tool
                 
                 try:
-                    if asyncio.iscoroutinefunction(execute_fn):
+                    if inspect.iscoroutinefunction(execute_fn):
                         result = await execute_fn(**tc.arguments)
                     else:
                         loop = asyncio.get_event_loop()
@@ -407,7 +417,7 @@ class AgentLoop:
             
             # Execute all tool calls concurrently
             indexed_results = await asyncio.gather(
-                *[execute_one(tc, i) for i, tc in enumerate(tool_calls[:self.config.max_tool_calls])]
+                *[execute_one(tc, i) for i, tc in enumerate(tool_calls)]
             )
             
             # Sort by original index to maintain order

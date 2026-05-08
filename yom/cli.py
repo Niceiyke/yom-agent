@@ -18,7 +18,7 @@ console = Console()
 
 
 @click.group(invoke_without_command=True)
-@click.version_option(version="0.1.1")
+@click.version_option(version="0.1.2")
 def main():
     """yom - Agent runtime CLI
     
@@ -129,7 +129,7 @@ A yom agent project.
 
 ```bash
 pip install yom
-export MINIMAX_API_KEY=your_key_here
+export OPENAI_API_KEY=your_key_here
 ```
 
 ## Run
@@ -179,28 +179,16 @@ def run(prompt: Optional[str], config: Optional[str], session_id: Optional[str],
     # Build agent
     try:
         if config:
-            import yaml
-            with open(config) as f:
-                cfg = yaml.safe_load(f)
-            
-            # Get provider config
-            provider_cfg = cfg.get("provider", {})
-            
-            agent = Agent(
-                system_prompt=cfg.get("system_prompt", "You are helpful."),
-                model=provider_cfg.get("model"),
-                session_id=session_id,
-            )
-            # Set tools
-            if "tools" in cfg:
-                agent._resolved_tools = agent._resolve_tools()
-                # Re-init with tools
-                agent = Agent(
-                    system_prompt=cfg.get("system_prompt", "You are helpful."),
-                    model=provider_cfg.get("model"),
-                    tools=cfg.get("tools", ["core"]),
-                    session_id=session_id,
-                )
+            overrides = {}
+            if session_id:
+                overrides["session_id"] = session_id
+            if system_prompt:
+                overrides["system_prompt"] = system_prompt
+            if model:
+                overrides["model"] = model
+            if tool_list:
+                overrides["tools"] = tool_list
+            agent = Agent.from_config(config, **overrides)
         else:
             agent_kwargs = {
                 "session_id": session_id,
@@ -261,11 +249,15 @@ def chat(session_id: Optional[str], config: Optional[str], system_prompt: Option
     # Build agent
     try:
         if config:
-            console.print("[yellow]Config file loading for chat is not yet wired to Agent. Using default Agent settings.[/yellow]")
-        agent = Agent(
-            session_id=session_id or "chat",
-            system_prompt=system_prompt or "You are a helpful assistant.",
-        )
+            overrides = {"session_id": session_id or "chat"}
+            if system_prompt:
+                overrides["system_prompt"] = system_prompt
+            agent = Agent.from_config(config, **overrides)
+        else:
+            agent = Agent(
+                session_id=session_id or "chat",
+                system_prompt=system_prompt or "You are a helpful assistant.",
+            )
     except Exception as e:
         console.print(f"[red]Failed to create agent: {e}[/red]")
         sys.exit(1)

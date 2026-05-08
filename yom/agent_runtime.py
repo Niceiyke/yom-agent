@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant. Respond to the user's requests concisely and accurately."
-DEFAULT_MODEL = "MiniMax-M2.7"
+DEFAULT_MODEL = "gpt-4o-mini"
 
 
 def _get_tool_name(tool: Any) -> str:
@@ -65,6 +65,8 @@ class AgentRuntime:
     ):
         self._deps = deps or RuntimeDeps()
         self._settings = settings
+        if self._settings.session_backend is None and self._deps.session_backend is not None:
+            self._settings.session_backend = self._deps.session_backend
         self._tools: list[Tool | Callable] = list(settings.tools)
         self._cancellation_token = None
 

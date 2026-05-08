@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import threading
 import time
@@ -10,9 +11,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from yom.config import RuntimeSettings
 from yom.factories import build_runtime
 from yom.models import AgentState
+
+logger = logging.getLogger(__name__)
 
 PROMPT_INJECTION_PATTERNS = [
     re.compile(r"ignore\s+(all\s+)?previous\s+instructions?", re.IGNORECASE),
@@ -138,33 +143,10 @@ class SubAgentDefinition:
 
     @staticmethod
     def _parse_frontmatter(frontmatter: str) -> dict[str, Any]:
-        """Parse YAML-like frontmatter."""
-        data: dict[str, Any] = {}
-        current_list_key: str | None = None
-
-        for raw_line in frontmatter.splitlines():
-            line = raw_line.rstrip()
-            if not line.strip():
-                continue
-            if line.startswith("  - ") and current_list_key:
-                value = line[4:].strip()
-                if isinstance(data.get(current_list_key), list):
-                    data[current_list_key].append(value)
-                continue
-
-            current_list_key = None
-            if ":" not in line:
-                continue
-
-            key, raw_value = line.split(":", 1)
-            key = key.strip()
-            value = raw_value.strip()
-            if not value:
-                data[key] = []
-                current_list_key = key
-            else:
-                data[key] = value
-
+        """Parse Markdown frontmatter as YAML."""
+        data = yaml.safe_load(frontmatter) or {}
+        if not isinstance(data, dict):
+            raise ValueError("frontmatter must be a YAML mapping")
         return data
 
 
@@ -218,7 +200,7 @@ class SubAgentRegistry:
                     continue  # Skip non-spawnable agents (e.g., mode="primary")
                 self.register(definition)
             except Exception as exc:
-                print(f"Warning: Failed to load agent from {path}: {exc}")
+                logger.warning("Failed to load agent from %s: %s", path, exc)
                 continue
 
     def register_function(self, name: str, description: str, system_prompt: str, tools: list[str] | None = None, mode: str = "subagent") -> None:

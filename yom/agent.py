@@ -124,6 +124,46 @@ class Agent:
 
         self._resolved_tools = self._resolve_tools()
 
+    @classmethod
+    def from_config(cls, path: str | Path, **overrides: Any) -> "Agent":
+        """Create an Agent from a YAML config file.
+
+        Supported keys include: runtime_id, system_prompt, provider, model/default_model,
+        base_url, api_key, tools, agents_dir, and session.backend/path.
+        """
+        import yaml
+
+        config_path = Path(path)
+        cfg = yaml.safe_load(config_path.read_text()) or {}
+        if not isinstance(cfg, dict):
+            raise ValueError("Agent config must be a YAML mapping")
+
+        provider_value = cfg.get("provider")
+        provider_name = provider_value if isinstance(provider_value, str) else None
+        provider_cfg = provider_value if isinstance(provider_value, dict) else {}
+
+        session_cfg = cfg.get("session") or {}
+        if not isinstance(session_cfg, dict):
+            session_cfg = {}
+
+        kwargs = {
+            "runtime_id": cfg.get("runtime_id", "agent"),
+            "system_prompt": cfg.get("system_prompt", "You are helpful. Use tools when needed."),
+            "tools": cfg.get("tools", ["core"]),
+            "provider": cfg.get("provider_name") or provider_name or provider_cfg.get("name"),
+            "model": cfg.get("model") or cfg.get("default_model") or provider_cfg.get("model"),
+            "base_url": cfg.get("base_url") or provider_cfg.get("base_url"),
+            "api_key": cfg.get("api_key") or provider_cfg.get("api_key"),
+            "session_id": cfg.get("session_id"),
+            "session_backend": session_cfg.get("backend", cfg.get("session_backend")),
+            "session_dir": session_cfg.get("path") or cfg.get("session_dir"),
+            "agents_dir": cfg.get("agents_dir"),
+            "enable_spawn": cfg.get("enable_spawn", True),
+            "max_subagent_depth": cfg.get("max_subagent_depth", 4),
+        }
+        kwargs.update(overrides)
+        return cls(**kwargs)
+
     def _init_subagent_manager(self) -> None:
         """Initialize sub-agent manager and load agents from directory if specified."""
         self._subagent_manager = SubAgentManager(max_depth=self.max_subagent_depth)
@@ -537,6 +577,8 @@ class Agent:
             cancellation_token.throw_if_cancelled()
         
         # Load or create state
+        if runtime._settings.session_backend is None:
+            runtime._settings.session_backend = InMemorySessionBackend()
         state = await runtime._settings.session_backend.load(session_id)
         if state is None:
             from yom.models.state import AgentState
@@ -594,6 +636,8 @@ class Agent:
             self.session_id = session_id
         
         # Initialize session
+        if runtime._settings.session_backend is None:
+            runtime._settings.session_backend = InMemorySessionBackend()
         state = await runtime._settings.session_backend.load(session_id)
         if state is None:
             from yom.models.state import AgentState
@@ -606,7 +650,8 @@ class Agent:
         self._state = state
         
         provider = runtime._get_provider()
-        model = runtime._settings.default_model or "MiniMax-M2.7"
+        from yom.agent_runtime import DEFAULT_MODEL
+        model = runtime._settings.default_model or DEFAULT_MODEL
         config = runtime._get_completion_config()
         
         from yom.loop import AgentLoop

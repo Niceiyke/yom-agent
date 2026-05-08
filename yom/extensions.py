@@ -1,7 +1,12 @@
-"""Extension points for agent-core runtime.
+"""Experimental runtime extension interfaces.
 
-This module defines the interfaces that users can implement
-to extend the runtime behavior.
+Use these only for application-specific experiments. Stable customization APIs:
+
+- :mod:`yom.hooks` / ``Agent.subscribe`` for lifecycle callbacks.
+- :mod:`yom.plugins` for packaged reusable integrations.
+
+The extension API is intentionally not exported from ``yom.__init__`` and may
+change before a stable release.
 """
 
 from __future__ import annotations
@@ -15,7 +20,9 @@ if TYPE_CHECKING:
 
 
 class RuntimeExtension(ABC):
-    """Base class for runtime extensions."""
+    """Experimental base class for runtime-level extensions."""
+
+    experimental = True
 
     @abstractmethod
     def on_initialized(self, runtime: AgentRuntime) -> None:
@@ -29,7 +36,13 @@ class RuntimeExtension(ABC):
 
 
 class TurnHook(ABC):
-    """Hook called before and after each agent turn."""
+    """Experimental turn extension interface.
+
+    Prefer :class:`yom.hooks.HookRegistry` or ``Agent.subscribe`` for stable
+    lifecycle callbacks.
+    """
+
+    experimental = True
 
     @abstractmethod
     async def before_turn(self, state: AgentState) -> None:
@@ -43,7 +56,9 @@ class TurnHook(ABC):
 
 
 class ToolHook(ABC):
-    """Hook called before and after tool execution."""
+    """Experimental tool extension interface."""
+
+    experimental = True
 
     @abstractmethod
     async def before_tool(self, tool_name: str, input: dict[str, Any]) -> None:
@@ -57,7 +72,9 @@ class ToolHook(ABC):
 
 
 class SessionHook(ABC):
-    """Hook called on session lifecycle events."""
+    """Experimental session extension interface."""
+
+    experimental = True
 
     @abstractmethod
     async def on_session_start(self, session_id: str, state: AgentState) -> None:
@@ -71,7 +88,9 @@ class SessionHook(ABC):
 
 
 class ErrorHandler(ABC):
-    """Handler for runtime errors."""
+    """Experimental runtime error extension interface."""
+
+    experimental = True
 
     @abstractmethod
     async def on_error(self, error: Exception, state: AgentState | None) -> None:
@@ -79,6 +98,16 @@ class ErrorHandler(ABC):
         pass
 
 
-# Type aliases for simpler extension
 CallbackHook = Callable[[dict[str, Any]], Awaitable[None]]
 Middleware = Callable[[dict[str, Any], Callable], Awaitable[dict[str, Any]]]
+
+
+__all__ = [
+    "CallbackHook",
+    "ErrorHandler",
+    "Middleware",
+    "RuntimeExtension",
+    "SessionHook",
+    "ToolHook",
+    "TurnHook",
+]

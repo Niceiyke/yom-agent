@@ -6,7 +6,6 @@ This example demonstrates:
 - Viewing collected event logs after execution
 
 Run:
-    export MINIMAX_API_KEY=your_key
     python examples/event_hooks_demo.py
 """
 
@@ -16,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from yom import Agent
 from yom.events import AgentEventType
+from yom.testing import fake_agent
 
 
 async def demo_event_subscription():
@@ -30,7 +29,7 @@ async def demo_event_subscription():
     print("=" * 60)
     print()
     
-    agent = Agent(tools=["core"])
+    agent = fake_agent(response="hello world")
     
     # Subscribe to events
     events = []

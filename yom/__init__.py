@@ -46,8 +46,12 @@ from yom.models import (
     validate_output,
 )
 from yom.plugins import (
+    HotReloader,
+    MiddlewarePlugin,
     Plugin,
+    ProviderPlugin,
     ToolPlugin,
+    ToolVersionRegistry,
     YomApp,
 )
 from yom.providers import (
@@ -86,7 +90,7 @@ from yom.toolsets import (
     shell_script,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     # Version
@@ -170,6 +174,10 @@ __all__ = [
     # Plugin System
     "Plugin",
     "ToolPlugin",
+    "ProviderPlugin",
+    "MiddlewarePlugin",
+    "ToolVersionRegistry",
+    "HotReloader",
     "YomApp",
     # Debug
     "DEBUG",

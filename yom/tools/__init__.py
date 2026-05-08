@@ -15,7 +15,7 @@ from yom.tools.core import (
 )
 from yom.tools.discover import load_tools_from_directory, merge_tool_registries
 from yom.tools.protocol import Tool
-from yom.tools.pydantic_tools import RunContext, agent_tool, tool
+from yom.tools.pydantic_tools import RunContext, agent_tool, define_tool, pydantic_to_schema, tool
 from yom.tools.registry import ToolRegistry
 from yom.tools.result import ToolResult
 
@@ -24,6 +24,8 @@ __all__ = [
     "tool",
     "agent_tool",
     "RunContext",
+    "define_tool",
+    "pydantic_to_schema",
     # Protocol and result
     "Tool",
     "ToolResult",
