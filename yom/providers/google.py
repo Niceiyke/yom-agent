@@ -49,16 +49,14 @@ class GoogleCompatibleProvider(BaseProvider):
 
     @property
     def provider_name(self) -> str:
-        return "google-compatible"
+        return "google"
 
     @property
     def client(self) -> Any:
         """Get or create cached client."""
         if self._client is None:
-            from google.genai import AsyncClient
-            self._client = AsyncClient(
-                api_key=self._get_api_key(),
-            )
+            from google import genai
+            self._client = genai.Client(api_key=self._get_api_key()).aio
         return self._client
 
     def _get_api_key(self) -> str:

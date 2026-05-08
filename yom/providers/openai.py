@@ -1,33 +1,16 @@
-"""OpenAI-compatible provider for yom.
+"""OpenAI Chat Completions provider.
 
-Works with ANY API that follows the OpenAI chat completions format:
-- OpenAI (api.openai.com)
-- Azure OpenAI (use azure=True)
-- Ollama (localhost:11434/v1)
-- LM Studio (localhost:1234/v1)
-- Groq (api.groq.com)
-- Fireworks (api.fireworks.ai)
-- Together AI (api.together.xyz)
-- vLLM, SGLang, and any other OpenAI-compatible server
-
-Usage:
-    # Direct
-    provider = OpenAICompatibleProvider(
-        base_url="http://localhost:11434/v1",  # Ollama
-        api_key="ollama",  # or None for Ollama
-    )
-
-    # Via factory
-    provider = create_provider(
-        base_url="http://localhost:11434/v1",
-        model="llama3",
-    )
+This provider intentionally targets the documented OpenAI Chat Completions API
+surface implemented by OpenAI and many compatible servers. In most cases adding
+another compatible provider only requires changing ``model`` and ``base_url``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+from collections.abc import Awaitable, Callable
 from typing import Any, AsyncIterator
 
 from yom.providers.base import (
@@ -41,77 +24,99 @@ from yom.providers.base import (
 
 
 class OpenAICompatibleProvider(BaseProvider):
-    """OpenAI-compatible provider using the official OpenAI SDK.
+    """Provider for OpenAI-compatible Chat Completions APIs."""
 
-    Works with any server that implements the OpenAI chat completions API format.
-    """
+    DEFAULT_BASE_URL = "https://api.openai.com/v1"
+    ENV_API_KEYS = ("OPENAI_API_KEY", "MINIMAX_API_KEY", "API_KEY")
 
     def __init__(
         self,
         base_url: str | None = None,
         api_key: str | None = None,
         timeout: float = 120.0,
-    ):
-        """
-        Initialize OpenAI-compatible provider.
-
-        Args:
-            base_url: API base URL. Defaults to OpenAI (https://api.openai.com/v1)
-            api_key: API key. Defaults to OPENAI_API_KEY env var.
-                     Many servers (Ollama, LM Studio) don't need one.
-            timeout: Request timeout in seconds.
-        """
-        self._base_url = base_url or "https://api.openai.com/v1"
+        default_headers: dict[str, str] | None = None,
+        default_query: dict[str, Any] | None = None,
+    ) -> None:
+        self._base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
+        self._default_headers = default_headers
+        self._default_query = default_query
         self._client: Any = None
 
     @property
     def provider_name(self) -> str:
-        return "openai-compatible"
+        return "openai"
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    @property
+    def api_key(self) -> str | None:
+        return self._api_key
 
     @property
     def client(self) -> Any:
-        """Get or create cached client."""
+        """Return a cached official OpenAI async client."""
         if self._client is None:
             from openai import AsyncOpenAI
+
             self._client = AsyncOpenAI(
                 api_key=self._get_api_key(),
                 base_url=self._base_url,
                 timeout=self._timeout,
+                default_headers=self._default_headers,
+                default_query=self._default_query,
+                max_retries=0,  # yom owns retry policy through CompletionConfig.
             )
         return self._client
 
+    @client.setter
+    def client(self, value: Any) -> None:
+        # Kept for tests and advanced dependency injection.
+        self._client = value
+
+    @client.deleter
+    def client(self) -> None:
+        self._client = None
+
     def _get_api_key(self) -> str:
-        """Get API key from config or environment."""
         if self._api_key:
             return self._api_key
-        # Check common env vars
-        for var in ["OPENAI_API_KEY", "MINIMAX_API_KEY", "API_KEY"]:
-            key = os.environ.get(var)
-            if key:
+        for env_var in self.ENV_API_KEYS:
+            if key := os.environ.get(env_var):
                 return key
-        # Many servers don't require an API key
+        # OpenAI-compatible local servers commonly accept any non-empty key.
         return "not-needed"
 
-    async def _retry_request(self, request_fn, config: CompletionConfig) -> Any:
-        """Execute request with retry logic."""
+    @staticmethod
+    def _status_code(exc: Exception) -> int | None:
+        code = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+        try:
+            return int(code) if code is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _is_retryable(cls, exc: Exception) -> bool:
+        code = cls._status_code(exc)
+        if code in {408, 409, 429} or (code is not None and code >= 500):
+            return True
+        text = str(exc).lower()
+        return any(marker in text for marker in ("rate limit", "rate_limit", "timeout", "temporar"))
+
+    async def _retry_request(self, request_fn: Callable[[], Awaitable[Any]], config: CompletionConfig) -> Any:
         last_error: Exception | None = None
         for attempt in range(config.max_retries + 1):
             try:
                 return await request_fn()
-            except Exception as exc:
+            except Exception as exc:  # SDK-specific exceptions vary across compatible servers.
                 last_error = exc
-                if attempt < config.max_retries:
-                    error_str = str(exc).lower()
-                    if "rate_limit" in error_str or "429" in str(getattr(exc, "status_code", "")):
-                        await asyncio.sleep((2 ** attempt) * 1.0)
-                        continue
-                    if "500" in str(getattr(exc, "status_code", "")):
-                        await asyncio.sleep((2 ** attempt) * 0.5)
-                        continue
-                break
-        raise last_error if last_error else RuntimeError("Request failed")
+                if attempt >= config.max_retries or not self._is_retryable(exc):
+                    break
+                await asyncio.sleep(min(30.0, 0.5 * (2**attempt)))
+        raise last_error if last_error else RuntimeError("OpenAI request failed")
 
     async def complete(
         self,
@@ -120,76 +125,39 @@ class OpenAICompatibleProvider(BaseProvider):
         config: CompletionConfig | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
-        """Send completion request to OpenAI-compatible endpoint."""
+        """Create a non-streaming chat completion."""
         config = config or CompletionConfig()
-
-        async def make_request():
-            request_kwargs: dict[str, Any] = {
-                "model": model,
-                "messages": self._convert_messages(messages),
-                "max_tokens": config.max_tokens,
-            }
-            if config.temperature:
-                request_kwargs["temperature"] = config.temperature
-            if config.top_p is not None:
-                request_kwargs["top_p"] = config.top_p
-            if config.stop_sequences:
-                request_kwargs["stop"] = config.stop_sequences
-            if tools:
-                request_kwargs["tools"] = tools
-
-            return await self.client.chat.completions.create(**request_kwargs)
+        request_kwargs = self._build_request_kwargs(messages, model, config, tools, stream=False)
 
         try:
-            response = await self._retry_request(make_request, config)
+            response = await self._retry_request(
+                lambda: self.client.chat.completions.create(**request_kwargs),
+                config,
+            )
         except Exception as exc:
-            raise RuntimeError(f"OpenAI-compatible request failed: {exc}") from exc
+            raise RuntimeError(f"OpenAI request failed: {exc}") from exc
 
-        if not response.choices:
+        choices = getattr(response, "choices", None) or []
+        if not choices:
             raise RuntimeError("OpenAI returned empty response")
 
-        choice = response.choices[0]
-        text = choice.message.content or ""
-        finish_reason = choice.finish_reason or "stop"
+        choice = choices[0]
+        message = choice.message
+        tool_calls = self._extract_tool_calls(getattr(message, "tool_calls", None))
+        raw = response.model_dump() if callable(getattr(response, "model_dump", None)) else {}
+        if not isinstance(raw, dict):
+            raw = {}
+        if tool_calls:
+            raw["tool_calls"] = tool_calls
+        finish_reason = getattr(choice, "finish_reason", None)
 
-        # Extract tool calls if present
-        tool_calls = []
-        raw_data = {}
-        if hasattr(choice.message, "tool_calls") and choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                func = tc.function
-                tool_calls.append({
-                    "id": getattr(tc, "id", None),
-                    "name": func.name,
-                    "arguments": func.arguments,
-                })
-            raw_data["tool_calls"] = tool_calls
-
-        # Usage
-        usage = None
-        if response.usage:
-            usage = Usage(
-                input_tokens=response.usage.prompt_tokens,
-                output_tokens=response.usage.completion_tokens,
-                total_tokens=response.usage.total_tokens,
-            )
-
-        raw_data.update(response.model_dump() if hasattr(response, "model_dump") else {})
-        
-        result = LLMResponse(
-            content=text,
-            model=response.model,
-            usage=usage,
-            stop_reason=finish_reason,
-            raw=raw_data,
+        return LLMResponse(
+            content=getattr(message, "content", None) or "",
+            model=getattr(response, "model", model) or model,
+            usage=self._extract_usage(getattr(response, "usage", None)),
+            stop_reason=finish_reason if isinstance(finish_reason, str) else None,
+            raw=raw,
         )
-        
-        # Validate (disabled by default, enable with YOM_VALIDATE=1)
-        from yom.providers.validation import validate_message_format, validate_openai_response
-        validate_message_format("openai", self._convert_messages(messages))
-        validate_openai_response(result)
-        
-        return result
 
     async def stream(
         self,
@@ -198,72 +166,114 @@ class OpenAICompatibleProvider(BaseProvider):
         config: CompletionConfig | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream completion from OpenAI-compatible endpoint."""
+        """Create a streaming chat completion."""
         config = config or CompletionConfig()
+        request_kwargs = self._build_request_kwargs(messages, model, config, tools, stream=True)
+        response = await self.client.chat.completions.create(**request_kwargs)
 
-        request_kwargs: dict[str, Any] = {
+        async for chunk in response:
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = choice.delta
+
+            if content := (getattr(delta, "content", None) or ""):
+                yield StreamChunk(content=content, is_final=False)
+
+            if tool_calls := self._extract_tool_calls(getattr(delta, "tool_calls", None)):
+                yield StreamChunk(content="", is_final=False, raw={"tool_calls": tool_calls})
+
+            if finish_reason := getattr(choice, "finish_reason", None):
+                yield StreamChunk(content="", is_final=True, stop_reason=finish_reason)
+                return
+
+        yield StreamChunk(content="", is_final=True)
+
+    def _build_request_kwargs(
+        self,
+        messages: list[Message],
+        model: str,
+        config: CompletionConfig,
+        tools: list[dict[str, Any]] | None,
+        *,
+        stream: bool,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
             "model": model,
-            "messages": self._convert_messages(messages),
+            "messages": self.convert_messages(messages),
             "max_tokens": config.max_tokens,
-            "stream": True,
         }
-        if config.temperature:
-            request_kwargs["temperature"] = config.temperature
+        if stream:
+            kwargs["stream"] = True
+        if config.temperature is not None:
+            kwargs["temperature"] = config.temperature
+        if config.top_p is not None:
+            kwargs["top_p"] = config.top_p
+        if config.stop_sequences:
+            kwargs["stop"] = config.stop_sequences
         if tools:
-            request_kwargs["tools"] = tools
+            kwargs["tools"] = tools
+        return kwargs
 
-        stream_response = await self.client.chat.completions.create(**request_kwargs)
+    @classmethod
+    def _extract_usage(cls, usage: Any) -> Usage | None:
+        if usage is None:
+            return None
+        input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(usage, "completion_tokens", 0) or 0
+        total_tokens = getattr(usage, "total_tokens", None) or (input_tokens + output_tokens)
+        return Usage(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=total_tokens)
 
-        has_content = False
-        async for chunk in stream_response:
-            if chunk.choices:
-                choice = chunk.choices[0]
-                content = choice.delta.content or ""
-                raw_data = {}
+    @classmethod
+    def _extract_tool_calls(cls, tool_calls: Any) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for tc in tool_calls or []:
+            function = getattr(tc, "function", None)
+            result.append(
+                {
+                    "id": getattr(tc, "id", None),
+                    "type": getattr(tc, "type", "function") or "function",
+                    "function": {
+                        "name": getattr(function, "name", None) if function is not None else None,
+                        "arguments": getattr(function, "arguments", "") if function is not None else "",
+                    },
+                }
+            )
+        return result
 
-                if content:
-                    has_content = True
-                    yield StreamChunk(content=content, is_final=False)
+    @staticmethod
+    def _normalise_tool_call_for_openai(tool_call: dict[str, Any]) -> dict[str, Any]:
+        tc = dict(tool_call)
+        function = dict(tc.get("function", {}))
+        arguments = function.get("arguments", "")
+        if isinstance(arguments, (dict, list)):
+            function["arguments"] = json.dumps(arguments)
+        elif arguments is None:
+            function["arguments"] = "{}"
+        tc["function"] = function
+        tc.setdefault("type", "function")
+        return tc
 
-                if choice.delta.tool_calls:
-                    has_content = True
-                    raw_data["tool_calls"] = [
-                        {"id": tc.id, "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                        for tc in choice.delta.tool_calls
-                    ]
-                    yield StreamChunk(content="", is_final=False, raw=raw_data)
-
-                if choice.finish_reason:
-                    yield StreamChunk(content="", is_final=True, stop_reason=choice.finish_reason)
-                    return
-
-        if not has_content:
-            yield StreamChunk(content="", is_final=True)
-
-    def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Convert unified Message list to OpenAI format."""
-        result = []
+    def convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
+        """Convert unified messages into the documented OpenAI chat format."""
+        converted: list[dict[str, Any]] = []
         for msg in messages:
-            msg_dict: dict[str, Any] = {
-                "role": msg.role,
-                "content": msg.content,
-            }
+            item: dict[str, Any] = {"role": msg.role, "content": msg.content or ""}
             if msg.role == "tool":
-                msg_dict["tool_call_id"] = getattr(msg, "tool_call_id", None)
-                msg_dict["name"] = getattr(msg, "name", None)
+                if msg.tool_call_id:
+                    item["tool_call_id"] = msg.tool_call_id
+                if msg.name:
+                    item["name"] = msg.name
             elif msg.role == "assistant":
                 tool_calls = getattr(msg, "_tool_calls", None) or msg.metadata.get("_tool_calls")
                 if tool_calls:
-                    msg_dict["tool_calls"] = tool_calls
-            result.append(msg_dict)
-        return result
-
-    def convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Convert unified Message list to OpenAI format."""
-        return self._convert_messages(messages)
+                    item["tool_calls"] = [self._normalise_tool_call_for_openai(tc) for tc in tool_calls]
+            converted.append(item)
+        return converted
 
 
-# Alias for backwards compatibility
+# Alias for backwards compatibility.
 OpenAIProvider = OpenAICompatibleProvider
 
 

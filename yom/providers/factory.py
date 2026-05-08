@@ -116,7 +116,7 @@ MINIMAX_ANTHROPIC_URL = "https://api.minimax.io/anthropic"
 
 # Env vars to check
 API_KEY_VARS = {
-    "openai": ["OPENAI_API_KEY"],
+    "openai": ["OPENAI_API_KEY", "MINIMAX_API_KEY"],
     "anthropic": ["ANTHROPIC_API_KEY", "MINIMAX_API_KEY"],
     "google": ["GOOGLE_API_KEY"],
 }
@@ -185,15 +185,8 @@ def create_provider(
         if provider == "anthropic" and api_key is None:
             api_key = os.environ.get("MINIMAX_API_KEY")
     
-    # Set env vars for Anthropic provider (MiniMax compatibility)
-    if provider == "anthropic":
-        if base_url:
-            os.environ["ANTHROPIC_BASE_URL"] = base_url
-        if api_key and not os.environ.get("ANTHROPIC_API_KEY"):
-            # MiniMax uses ANTHROPIC_API_KEY env var via SDK
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-    
-    # Create provider based on type
+    # Create provider based on type. Providers receive base_url/api_key directly;
+    # avoid mutating process environment so multiple providers can coexist.
     if provider == "anthropic":
         return AnthropicCompatibleProvider(api_key=api_key, base_url=base_url)
     
