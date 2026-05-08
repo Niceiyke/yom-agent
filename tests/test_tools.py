@@ -1,7 +1,8 @@
-"""Tests for tool system enhancements."""
+"""Tests for tool system."""
 
 from __future__ import annotations
 
+import asyncio
 import pytest
 
 from yom.tools import (
@@ -12,7 +13,6 @@ from yom.tools import (
     CORE_TOOL_NAMES,
     get_tool,
 )
-from yom.tools.decorator import ToolDecorator
 
 
 class TestToolDecorator:
@@ -148,9 +148,8 @@ class TestToolRegistry:
 
         registry.register(add)
 
-        import asyncio
         result = asyncio.run(registry.execute("add", x=2, y=3))
-        assert hasattr(result, 'success')
+        assert hasattr(result, 'is_success')
         assert result.content == "5"
 
     def test_execute_failure(self):
@@ -163,18 +162,16 @@ class TestToolRegistry:
 
         registry.register(failing_tool)
 
-        import asyncio
         result = asyncio.run(registry.execute("failing_tool"))
-        assert result.success is False
+        assert result.is_success is False
         assert "test error" in result.error
 
     def test_execute_not_found(self):
         """Test executing non-existent tool."""
         registry = ToolRegistry()
 
-        import asyncio
         result = asyncio.run(registry.execute("nonexistent"))
-        assert result.success is False
+        assert result.is_success is False
         assert "not found" in result.error.lower()
 
     def test_unregister(self):
@@ -240,13 +237,21 @@ class TestToolResult:
     def test_success_classmethod(self):
         """Test success factory method."""
         result = ToolResult.success("test", "content")
-        assert result.success is True
+        assert result.is_success is True
         assert result.content == "content"
         assert result.error is None
 
     def test_failure_classmethod(self):
         """Test failure factory method."""
         result = ToolResult.failure("test", "error message")
-        assert result.success is False
+        assert result.is_success is False
         assert result.content == ""
         assert result.error == "error message"
+
+    def test_model_validation(self):
+        """Test Pydantic model validation."""
+        result = ToolResult(tool_name="test", content="hello")
+        assert result.tool_name == "test"
+        assert result.content == "hello"
+        assert result.is_success is True
+        assert result.error is None

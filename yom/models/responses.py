@@ -1,33 +1,37 @@
-"""Runtime response types."""
+"""Runtime response types with Pydantic validation."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import BaseModel, Field
 
-@dataclass
-class TurnResult:
+
+def _utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
+
+
+class TurnResult(BaseModel):
     """Result of a single agent turn."""
     assistant_message: str
-    tool_calls: list[dict] = field(default_factory=list)
-    tool_results: list[dict] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    tool_results: list[dict[str, Any]] = Field(default_factory=list)
     turn_number: int = 0
 
 
-@dataclass
-class RuntimeRunResult:
+class RuntimeRunResult(BaseModel):
     """Result of a complete runtime run."""
     session_id: str
     runtime_id: str
-    final_message: str
+    final_message: str = ""
     turns: int = 0
     tool_calls_count: int = 0
     error: str | None = None
-    usage: dict[str, Any] = field(default_factory=dict)
-    metadata: dict[str, Any] = field(default_factory=dict)
-    completed_at: datetime = field(default_factory=datetime.utcnow)
+    usage: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    completed_at: datetime = Field(default_factory=_utcnow)
 
     def to_dict(self) -> dict:
         return {

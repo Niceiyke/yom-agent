@@ -1,6 +1,6 @@
 """Tool interface and decorators."""
 
-from yom.tools.decorator import tool
+from yom.tools.pydantic_tools import tool, agent_tool, RunContext
 from yom.tools.protocol import Tool
 from yom.tools.result import ToolResult
 from yom.tools.registry import ToolRegistry
@@ -17,17 +17,13 @@ from yom.tools.core import (
     create_grep_tool,
     create_glob_tool,
 )
-from yom.tools.define import (
-    define_tool,
-    create_tool,
-    pydantic_to_schema,
-    define_tool_from_pydantic,
-)
 from yom.tools.discover import load_tools_from_directory, merge_tool_registries
 
 __all__ = [
     # Core decorator
     "tool",
+    "agent_tool",
+    "RunContext",
     # Protocol and result
     "Tool",
     "ToolResult",
@@ -39,7 +35,7 @@ __all__ = [
     "CORE_TOOLS",
     "CORE_TOOL_NAMES",
     "get_tool",
-    # Tool factories (P1)
+    # Tool factories
     "create_core_tools",
     "create_read_tool",
     "create_write_tool",
@@ -47,11 +43,9 @@ __all__ = [
     "create_bash_tool",
     "create_grep_tool",
     "create_glob_tool",
-    # Tool definition helpers (P2)
+    # Tool definition helpers
     "define_tool",
     "create_tool",
-    "pydantic_to_schema",
-    "define_tool_from_pydantic",
     # Discovery
     "load_tools_from_directory",
     "merge_tool_registries",

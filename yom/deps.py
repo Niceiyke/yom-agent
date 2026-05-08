@@ -2,28 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from yom.tools import Tool
     from yom.models.state import AgentState
     from yom.session.backends import SessionBackend
     from yom.context.manager import ContextManager
-    from yom.hooks.hooks import HookRegistry
 
 
 StreamFn = Callable[..., object]
 
 
-@dataclass
-class RuntimeDeps:
+class RuntimeDeps(BaseModel):
     """Container for runtime dependencies."""
-    session_backend: SessionBackend | None = None
-    tool_registry: Tool | None = None
-    context_manager: ContextManager | None = None
-    llm_stream: StreamFn | None = None
-    hooks: HookRegistry | None = None
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    session_backend: Any = None
+    tool_registry: Any = None
+    context_manager: Any = None
+    llm_stream: Any = None
 
 
 class SessionManager:

@@ -40,7 +40,7 @@ def main():
 @main.command()
 @click.argument("name")
 @click.option("--template", "-t", default="basic", 
-              type=click.Choice(["basic", "telegram", "api", "multi-agent"]),
+              type=click.Choice(["basic", "api", "multi-agent"]),
               help="Project template")
 @click.option("--dir", "-d", default=None, help="Target directory")
 def init(name: str, template: str, dir: Optional[str]):
@@ -48,8 +48,8 @@ def init(name: str, template: str, dir: Optional[str]):
     
     Examples:
         yom init my-agent
-        yom init my-agent --template telegram
-        yom init api-service --dir /path/to/projects
+        yom init my-agent --template api
+        yom init my-agent --template multi-agent
     """
     target_dir = Path(dir) / name if dir else Path.cwd() / name
     
@@ -62,8 +62,7 @@ def init(name: str, template: str, dir: Optional[str]):
     
     templates = {
         "basic": _create_basic_template,
-        "telegram": _create_telegram_template,
-        "api": _create_api_template,
+                "api": _create_api_template,
         "multi-agent": _create_multi_agent_template,
     }
     
@@ -147,240 +146,6 @@ yom run --config agent.yaml "Your prompt"
 
 Edit `agent.yaml` to configure the agent.
 Add custom tools in `tools/` directory.
-'''
-    (target / "README.md").write_text(readme)
-
-
-def _create_telegram_template(target: Path, name: str):
-    """Create Telegram bot template."""
-    _create_basic_template(target, name)
-    
-    # Create bot.py
-    bot_py = '''"""Telegram bot for yom agent."""
-
-from yom import Agent
-from yom.toolsets.telegram import TelegramBot
-
-def main():
-    import os
-    
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token:
-        raise ValueError("Set TELEGRAM_BOT_TOKEN environment variable")
-    
-    agent = Agent(tools=["core"])
-    bot = TelegramBot(token=token, agent=agent)
-    
-    print("Bot started! Press Ctrl+C to stop.")
-    asyncio.run(bot.poll())
-
-if __name__ == "__main__":
-    main()
-'''
-    (target / "bot.py").write_text(bot_py)
-    
-    # Update agent.yaml
-    agent_yaml = f'''runtime_id: "{name}"
-system_prompt: "You are a helpful assistant. Be friendly and concise."
-
-provider:
-  name: "minimax"
-  model: "MiniMax-M2.7"
-
-tools:
-  - "core"
-
-telegram:
-  enabled: true
-'''
-    (target / "agent.yaml").write_text(agent_yaml)
-    
-    # Update README
-    readme = f'''# {name} - Telegram Bot
-
-A yom agent with Telegram integration.
-
-## Setup
-
-```bash
-export MINIMAX_API_KEY=your_key
-export TELEGRAM_BOT_TOKEN=your_token
-```
-
-## Run
-
-```bash
-python bot.py
-# or
-yom telegram polling --token $TELEGRAM_BOT_TOKEN --tools "core"
-```
-'''
-    (target / "README.md").write_text(readme)
-
-
-def _create_api_template(target: Path, name: str):
-    """Create API server template."""
-    _create_basic_template(target, name)
-    
-    # Create api.py
-    api_py = '''"""FastAPI server for yom agent."""
-
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from yom import Agent
-
-app = FastAPI(title="yom Agent API")
-
-# Initialize agent
-agent = Agent(config="agent.yaml")
-
-
-class PromptRequest(BaseModel):
-    prompt: str
-    session_id: str | None = None
-
-
-class PromptResponse(BaseModel):
-    response: str
-    session_id: str
-
-
-@app.post("/prompt")
-async def prompt(request: PromptRequest):
-    """Process a prompt."""
-    agent = Agent(session_id=request.session_id, config="agent.yaml")
-    result = await agent.run(request.prompt)
-    return PromptResponse(response=result, session_id=agent.session_id)
-
-
-@app.get("/sessions")
-async def list_sessions():
-    """List active sessions."""
-    return {"sessions": []}
-
-
-@app.get("/sessions/{{session_id}}")
-async def get_session(session_id: str):
-    """Get session history."""
-    return {"session_id": session_id, "messages": []}
-
-
-@app.delete("/sessions/{{session_id}}")
-async def delete_session(session_id: str):
-    """Delete a session."""
-    return {"deleted": session_id}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-'''
-    (target / "api.py").write_text(api_py)
-    
-    # Update README
-    readme = f'''# {name} - API Server
-
-A yom agent with FastAPI web interface.
-
-## Setup
-
-```bash
-pip install yom fastapi uvicorn
-export MINIMAX_API_KEY=your_key
-```
-
-## Run
-
-```bash
-uvicorn api:app --reload
-```
-
-## Endpoints
-
-- `POST /prompt` - Send a prompt
-- `GET /sessions` - List sessions
-- `GET /sessions/{{id}}` - Get session
-- `DELETE /sessions/{{id}}` - Delete session
-'''
-    (target / "README.md").write_text(readme)
-
-
-def _create_multi_agent_template(target: Path, name: str):
-    """Create multi-agent template."""
-    _create_basic_template(target, name)
-    
-    # Create agents directory
-    (target / "agents").mkdir(exist_ok=True)
-    
-    # Create supervisor.py
-    supervisor_py = '''"""Supervisor agent that coordinates sub-agents."""
-
-from yom import Agent
-
-def main():
-    supervisor = Agent(
-        system_prompt="""You are a supervisor that coordinates multiple specialized agents.
-Available agents:
-- coder: Writes code
-- reviewer: Reviews code
-- tester: Writes tests
-
-Delegate tasks to the appropriate agent.""",
-        tools=["core"],
-    )
-    
-    # Example: delegate coding task
-    result = supervisor.run_sync(
-        "Have the coder write a hello world function, "
-        "then have the reviewer check it."
-    )
-    print(result)
-
-if __name__ == "__main__":
-    main()
-'''
-    (target / "supervisor.py").write_text(supervisor_py)
-    
-    # Create agents/README.md
-    agents_readme = '''# Sub-Agents
-
-Define specialized agents here.
-
-Each agent is a YAML file with name, system_prompt, and tools.
-
-Example (coder.yaml):
-```yaml
-name: coder
-system_prompt: "You are an expert programmer. Write clean, efficient code."
-tools:
-  - "core"
-  - "shell"
-```
-'''
-    (target / "agents" / "README.md").write_text(agents_readme)
-    
-    # Update README
-    readme = f'''# {name} - Multi-Agent
-
-A yom agent that coordinates multiple specialized sub-agents.
-
-## Structure
-
-```
-{name}/
-├── supervisor.py     # Main supervisor agent
-├── agents/           # Sub-agent definitions
-│   ├── coder.yaml
-│   ├── reviewer.yaml
-│   └── tester.yaml
-└── agent.yaml
-```
-
-## Run
-
-```bash
-python supervisor.py
-```
 '''
     (target / "README.md").write_text(readme)
 
@@ -856,8 +621,7 @@ def info():
     console.print("\n[bold]Available toolsets:[/bold]")
     from yom.toolsets import __all__
     for toolset in __all__:
-        if not toolset.startswith("Telegram"):
-            console.print(f"  [cyan]{toolset}[/cyan]")
+                    console.print(f"  [cyan]{toolset}[/cyan]")
 
 
 # =============================================================================
@@ -872,8 +636,7 @@ def templates():
     table.add_column("Description")
     
     table.add_row("basic", "Simple agent with config file")
-    table.add_row("telegram", "Telegram bot integration")
-    table.add_row("api", "FastAPI web service")
+        table.add_row("api", "FastAPI web service")
     table.add_row("multi-agent", "Supervisor with sub-agents")
     
     console.print(table)
@@ -885,113 +648,9 @@ def templates():
 # =============================================================================
 
 @main.group()
-def telegram():
-    """Telegram bot commands.
-    
-    Examples:
-        yom telegram polling --token <token>
-        yom telegram set-webhook --token <token> --url <url>
-    """
-    pass
 
 
-@telegram.command("polling")
-@click.option("--token", "-t", required=True, help="Telegram bot token")
-@click.option("--tools", default="core", help="Comma-separated tools")
-@click.option("--system-prompt", default=None, help="System prompt")
-def telegram_polling(token: str, tools: str, system_prompt: Optional[str]):
-    """Run Telegram bot with polling."""
-    from yom.toolsets.telegram import TelegramBot
-    
-    tool_list = [t.strip() for t in tools.split(",")]
-    agent = Agent(tools=tool_list, system_prompt=system_prompt or "You are helpful.")
-    bot = TelegramBot(token=token, agent=agent)
-    
-    console.print(f"[green]🤖 Bot started![/green]")
-    console.print(f"[dim]Tools: {', '.join(tool_list)}[/dim]")
-    console.print("[yellow]Press Ctrl+C to stop[/yellow]")
-    
-    try:
-        asyncio.run(bot.poll())
-    except KeyboardInterrupt:
-        bot.stop()
-        console.print("\n[green]👋 Bot stopped.[/green]")
 
-
-@telegram.command("set-webhook")
-@click.option("--token", "-t", required=True, help="Telegram bot token")
-@click.option("--url", "-u", required=True, help="Webhook URL")
-def telegram_set_webhook(token: str, url: str):
-    """Set webhook URL for the bot."""
-    import httpx
-    
-    async def set_wh():
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.telegram.org/bot{token}/setWebhook",
-                json={"url": url}
-            )
-            result = response.json()
-            if result.get("ok"):
-                console.print(f"[green]✅ Webhook set to {url}[/green]")
-            else:
-                console.print(f"[red]❌ Error: {result.get('description')}[/red]")
-    
-    asyncio.run(set_wh())
-
-
-@telegram.command("get-updates")
-@click.option("--token", "-t", required=True, help="Telegram bot token")
-def telegram_get_updates(token: str):
-    """Get pending updates."""
-    import httpx
-    
-    async def get_upd():
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://api.telegram.org/bot{token}/getUpdates"
-            )
-            result = response.json()
-            if result.get("ok"):
-                updates = result.get("result", [])
-                console.print(f"[green]{len(updates)} pending update(s)[/green]")
-                for u in updates[:5]:
-                    msg = u.get("message", {})
-                    console.print(f"  [dim]{msg.get('from', {}).get('first_name', '?')}: {msg.get('text', '')}[/dim]")
-            else:
-                console.print(f"[red]❌ Error: {result.get('description')}[/red]")
-    
-    asyncio.run(get_upd())
-
-
-# =============================================================================
-# RPC MODE
-# =============================================================================
-
-@main.command("rpc")
-def rpc():
-    """Start yom in RPC mode.
-    
-    Listens for JSON-RPC 2.0 requests on stdin and writes responses to stdout.
-    This enables embedding yom in other applications or using it from other languages.
-    
-    Supported methods:
-        - agent.run: Run a prompt
-        - agent.call_tool: Call a tool directly
-        - agent.get_state: Get current agent state
-        - agent.abort: Abort current operation
-        - agent.get_session_messages: Get session messages
-        - agent.new_session: Clear and start new session
-        - agent.dispose: Clean up resources
-        - rpc.discover: List available methods
-    
-    Example client usage:
-        $ yom rpc
-        {"jsonrpc": "2.0", "id": 1, "method": "agent.run", "params": {"prompt": "Hello"}}
-        {"jsonrpc": "2.0", "id": 1, "result": {"content": "Hello! How can I help?"}}
-    """
-    from yom.rpc import serve_rpc
-    asyncio.run(serve_rpc())
 
 
 # =============================================================================

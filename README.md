@@ -1,22 +1,30 @@
-# yom - Agent Runtime Framework
+# yom - Markdown-Native Agent Orchestration
 
-**yom** is an open-source agent runtime that makes it easy to build AI-powered applications with tool calling, session management, and multi-provider support.
+**yom** is an agent runtime for building multi-agent applications. Define agents and skills as Markdown files, spawn specialists on demand.
 
 ```python
 from yom import Agent
 
-agent = Agent(tools=["core"])
-result = await agent.run("Hello, world!")
+agent = Agent(
+    tools=["core", "spawn"],
+    agents_dir=".yom/agents",
+    system_prompt="You are a helpful coordinator. Spawn specialists when needed."
+)
+
+result = await agent.run("Review /tmp/code.py")  # Spawns reviewer sub-agent
 ```
 
-## Features
+## Core Features
 
-- 🔧 **Tool Calling** - Extend agents with custom tools
-- 💾 **Sessions** - Conversation memory that persists
-- 🔌 **Plugins** - Hot-reloadable extensions
-- 🌐 **Multi-Provider** - OpenAI, Anthropic, Google, Ollama, NVIDIA
-- 🧪 **Testing** - Built-in testing utilities
-- 🐛 **Debug Mode** - Trace and debug agent behavior
+| Feature | Description |
+|---------|-------------|
+| **Sub-agents** | Spawn specialists from Markdown definitions |
+| **Skills** | Loadable prompt templates discovered on demand |
+| **Sessions** | Persistent conversation memory |
+| **Type-safe tools** | Pydantic validation for inputs and outputs |
+| **Multi-provider** | OpenAI, Anthropic, Google, Ollama |
+| **Event subscription** | Monitor agent lifecycle |
+| **Plugins** | Hot-reloadable extensions |
 
 ## Installation
 
@@ -31,290 +39,178 @@ pip install yom[anthropic,google,s3,telegram]
 
 ## Quick Start
 
+### 1. Create sub-agents as Markdown files
+
+```bash
+mkdir -p .yom/agents
+```
+
+**`.yom/agents/reviewer.md`**
+```markdown
+---
+name: reviewer
+description: Reviews code for bugs and issues
+mode: subagent
+tools: [core]
+---
+
+You are a code reviewer. Analyze code for:
+- Security vulnerabilities
+- Logic errors
+- Performance issues
+
+Provide specific, actionable feedback.
+```
+
+### 2. Use them from your agent
+
 ```python
 from yom import Agent
 
 agent = Agent(
-    tools=["core"],
-    system_prompt="You are a helpful assistant."
+    tools=["core", "spawn"],
+    agents_dir=".yom/agents",
 )
 
-# Run synchronously
-result = agent.run_sync("What is Python?")
-
-# Or async
-import asyncio
-result = asyncio.run(agent.run("What is Python?"))
+# The coordinator spawns reviewer for this
+result = await agent.run("Review /tmp/app.py")
 ```
 
-## Tools
+## Key Concepts
 
-### Built-in Tools
+### Sub-agents
 
-```python
-from yom import Agent
+Spawnable specialists defined as Markdown files. The coordinator agent decides when to spawn based on task requirements.
 
-# Use built-in tools by name
-agent = Agent(tools=["core", "http_request", "shell"])
-
-# Your tools
-from yom import tool
-
-@tool(name="my_tool", description="Does something")
-def my_tool(arg1: str) -> str:
-    return f"Hello, {arg1}!"
-
-agent = Agent(tools=["core", my_tool])
+```
+.yom/agents/
+├── reviewer.md      # Code reviewer
+├── coder.md        # General coder
+└── tester.md       # Test writer
 ```
 
-### Available Tool Categories
-
-| Category | Tools |
-|----------|-------|
-| **core** | read, write, edit, bash, glob, grep |
-| **http** | http_request, get_json |
-| **database** | query_db, db_schema |
-| **github** | github_api, github_read_file, github_search |
-| **storage** | s3_put, s3_get, s3_list |
-| **shell** | shell, shell_script |
-
-## Providers
-
-yom supports multiple LLM providers:
-
-```python
-from yom import Agent
-
-# OpenAI (default)
-agent = Agent()  # Uses OPENAI_API_KEY env var
-
-# MiniMax
-agent = Agent(provider="minimax")  # Uses MINIMAX_API_KEY
-
-# Anthropic
-from yom.providers import AnthropicProvider
-agent = Agent(provider=AnthropicProvider(api_key="sk-..."))
-
-# Ollama (local)
-from yom.providers import OllamaProvider
-agent = Agent(provider=OllamaProvider(model="llama3"))
+**Frontmatter schema:**
+```yaml
+name: reviewer                    # Required: agent identifier
+description: Reviews code...      # Required: shown to LLM for routing
+mode: subagent                    # "subagent" (spawnable) or "primary"
+tools: [core]                     # Tools available to this agent
+model: gpt-4                      # Optional: override default model
 ```
 
-## Sessions
+### Skills
 
-Agents remember conversations:
+Reusable prompt templates loaded on demand.
+
+```
+skills/
+├── coding/
+│   └── SKILL.md
+└── research/
+    └── SKILL.md
+```
+
+Discovery paths: `~/.yom/skills/`, `{cwd}/skills/`, `{cwd}/.yom/skills/`
+
+### Sessions
+
+Persistent conversation memory.
 
 ```python
 agent = Agent(session_id="user-123")
 
-# First interaction
-agent.run("My name is Alice")
-# → Remembers "Alice"
-
-# Later
-agent.run("What is my name?")
-# → "Your name is Alice"
+await agent.run("My name is Alice")
+await agent.run("What is my name?")  # "Your name is Alice"
 ```
 
-### Session Backends
+### Type-Safe Tools
 
 ```python
-# In-memory (default)
-agent = Agent(session_id="123")
+from pydantic import BaseModel, Field
+from yom import Agent, tool
 
-# File-based (persists to disk)
-agent = Agent(
-    session_id="123",
-    session_backend="file",
-    session_dir="./sessions"
-)
+class SearchInput(BaseModel):
+    query: str = Field(description="Search query")
+    limit: int = Field(default=10, description="Max results")
 
-# Or explicit
-from yom.session import FileSessionBackend
-agent = Agent(
-    session_id="123",
-    session_backend=FileSessionBackend(dir="./sessions")
-)
+@tool(input_model=SearchInput)
+def search(input: SearchInput) -> str:
+    return f"Found {input.limit} results"
+
+agent = Agent(tools=["core", search])
 ```
 
-## Testing
+## Deployment
 
-```python
-from yom.testing import fake_agent, MockProvider
-
-# Fake agent for testing
-agent = fake_agent("I am a test agent")
-result = agent.run_sync("Hello")
-assert "test agent" in result
-
-# Mock provider
-provider = MockProvider(responses=["First", "Second", "Third"])
-agent = fake_agent(provider=provider)
-```
-
-## Debug Mode
-
-```python
-from yom.debug import enable_debug, trace, get_recorder
-
-# Enable debug output
-enable_debug()
-
-# Trace execution
-with trace("my_operation") as ctx:
-    # ... do stuff
-    pass
-
-# View recorded traces
-recorder = get_recorder()
-for event in recorder.events:
-    print(event)
-```
-
-## Plugin System
-
-```python
-from yom.plugins import YomApp, ToolPlugin
-
-app = YomApp()
-
-# Load plugins from directory
-app.plugin_manager.load_plugins("./plugins")
-
-# Create plugin
-class MyPlugin(ToolPlugin):
-    name = "my-plugin"
-    
-    @staticmethod
-    @tool(name="my_tool")
-    def my_tool():
-        return "Hello from plugin!"
-    
-    def get_tools(self):
-        return [self.my_tool]
-
-app.plugin_manager.register_plugin(MyPlugin())
-```
-
-## Telegram Bot
+### Telegram Bot
 
 ```python
 from yom import Agent
 from yom.toolsets.telegram import TelegramBot
 
-agent = Agent(tools=["core"])
-bot = TelegramBot(token="YOUR_BOT_TOKEN", agent=agent)
-
-# Run polling
+agent = Agent(tools=["core", "spawn"], agents_dir=".yom/agents")
+bot = TelegramBot(token="TOKEN", agent=agent)
 await bot.poll()
 ```
 
-### Telegram Commands
+### FastAPI
 
+```python
+from yom import create_agent_router
+
+router = create_agent_router(agent)
+app.include_router(router)
 ```
-/start       - Welcome
-/new <name>  - Create session
-/switch <name> - Switch session
-/sessions    - List sessions
-/reset       - Clear history
-/help        - Show help
+
+### RPC Server
+
+```python
+from yom import serve_rpc
+
+await serve_rpc(agent, host="0.0.0.0", port=8080)
 ```
 
 ## CLI
 
 ```bash
-# Run a prompt
-yom run "What is 2+2?"
-
-# Interactive REPL
-yom repl
-
-# Run with config
-yom run --config config.yaml
-
-# Telegram bot
-yom telegram polling --token "TOKEN"
+yom run "What is 2+2?"        # Run a prompt
+yom repl                        # Interactive REPL
+yom run --config config.yaml   # Run with config
 ```
 
-## API Reference
+## Directory Structure
 
-### Agent
-
-```python
-from yom import Agent
-
-agent = Agent(
-    system_prompt="You are...",      # System prompt
-    tools=["core", my_tool],         # Tools to use
-    model="gpt-4",                   # Model name
-    session_id="user-123",           # Session ID
-    session_backend="file",          # Session backend
-    session_dir="./sessions",        # Session directory
-)
+```
+project/
+├── .yom/
+│   └── agents/           # Sub-agent definitions
+├── skills/               # Skill definitions
+│   └── coding/
+│       └── SKILL.md
+└── agent.py              # Your agent code
 ```
 
-### Tools
+## Comparison
 
-```python
-from yom import tool
-
-@tool(
-    name="my_tool",
-    description="Does something",
-    schema={
-        "type": "object",
-        "properties": {
-            "arg1": {"type": "string"}
-        },
-        "required": ["arg1"]
-    }
-)
-def my_tool(arg1: str) -> str:
-    """Tool description."""
-    return f"Result: {arg1}"
-```
-
-## Configuration
-
-### YAML Config
-
-```yaml
-# config.yaml
-runtime_id: my-agent
-system_prompt: You are a helpful assistant.
-
-provider:
-  name: openai
-  model: gpt-4o-mini
-
-tools:
-  - core
-  - http_request
-
-session:
-  backend: file
-  dir: ./sessions
-```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key |
-| `MINIMAX_API_KEY` | MiniMax API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `GOOGLE_API_KEY` | Google API key |
-| `YOM_DEBUG` | Enable debug mode (1/0) |
+| Feature | yom | Pydantic AI | LangGraph |
+|---------|-----|------------|-----------|
+| Multi-agent | ✅ Sub-agents | ❌ | ✅ Graph |
+| Skills | ✅ Markdown | ❌ | ❌ |
+| Sessions | ✅ File/memory | ❌ | ✅ |
+| Authoring | Markdown files | Code only | Code only |
 
 ## Examples
 
-See `examples/` directory for complete examples:
+See `examples/` for complete examples:
+- `customer_support.py` - Real-world agent with output validation
+- `pydantic_validation.py` - Pydantic tool patterns
+- `telegram/` - Telegram bot integration
 
-- `simple.py` - Basic usage
-- `with_tools.py` - Custom tools
-- `telegram_bot.py` - Telegram integration
-- `sessions.py` - Session management
+## Documentation
+
+- [Quick Start](docs/quickstart.md) - Get up and running
+- [Architecture](docs/architecture.md) - Deep dive into design
 
 ## License
 
-MIT License
+MIT

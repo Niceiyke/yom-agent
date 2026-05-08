@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 MAX_NAME_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 1024
@@ -20,8 +21,7 @@ LOAD_SKILL_SCHEMA: dict[str, Any] = {
 }
 
 
-@dataclass
-class Skill:
+class Skill(BaseModel):
     """A discoverable skill with metadata and content."""
     name: str
     description: str
@@ -30,12 +30,13 @@ class Skill:
     source: str
     disable_model_invocation: bool = False
 
+    model_config = {"arbitrary_types_allowed": True}
 
-@dataclass
-class LoadedSkills:
+
+class LoadedSkills(BaseModel):
     """Container for discovered skills and diagnostics."""
-    skills: list[Skill]
-    diagnostics: list[dict[str, Any]]
+    skills: list[Skill] = Field(default_factory=list)
+    diagnostics: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def _validate_name(name: str, parent_dir_name: str) -> list[str]:

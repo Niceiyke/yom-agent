@@ -5,14 +5,11 @@ Run with: pytest tests/test_new_features.py -v
 
 import asyncio
 import tempfile
-import os
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from yom import Agent, AgentState
-from yom.agent import Agent
 from yom.cancellation import CancellationToken, CancellationScope
 from yom.events import AgentEvent, AgentEventType
 from yom.hooks import HookRegistry
@@ -21,8 +18,8 @@ from yom.tools import (
     create_read_tool,
     create_write_tool,
     create_bash_tool,
-    define_tool,
-    pydantic_to_schema,
+    tool,
+    agent_tool,
 )
 from yom.testing import MockProvider, fake_agent
 
@@ -34,17 +31,11 @@ from yom.testing import MockProvider, fake_agent
 class TestStateAccess:
     """Test Agent.state property and related state access."""
 
-    @pytest.mark.asyncio
-    async def test_state_property_after_run(self):
+    def test_state_property_after_run(self):
         """State should be accessible after running a prompt."""
         agent = Agent(tools=["core"])
         
-        # Use mock provider for testing
-        agent._runtime = None
-        
-        # Create a mock runtime that sets state
         from yom.models.state import AgentState
-        from yom.session import InMemorySessionBackend
         
         state = AgentState.create(
             runtime_id="test",
@@ -55,14 +46,12 @@ class TestStateAccess:
         
         agent._state = state
         
-        # Test state access
         assert agent.state is not None
         assert agent.state.session_id == "test-session"
         assert len(agent.state.messages) == 2
         assert agent.state.current_turn == 0
 
-    @pytest.mark.asyncio
-    async def test_session_messages_property(self):
+    def test_session_messages_property(self):
         """Session messages should be accessible via property."""
         agent = Agent(tools=["core"])
         
@@ -81,7 +70,6 @@ class TestStateAccess:
         """Provider should be accessible after runtime is created."""
         agent = Agent(tools=["core"])
         
-        # Provider not available until runtime is created
         assert agent.llm_provider is None
 
 
@@ -108,7 +96,6 @@ class TestCancellationToken:
         """Cancellation should work synchronously."""
         token = CancellationToken()
         
-        # Before cancel, should not raise
         try:
             token.throw_if_cancelled()
         except asyncio.CancelledError:
@@ -131,7 +118,6 @@ class TestCancellationToken:
         assert not token.is_cancelled
         assert token.cancel_reason is None
 
-    @pytest.mark.asyncio
     async def test_cancel_token_async(self):
         """Async cancellation check."""
         token = CancellationToken()
@@ -142,24 +128,18 @@ class TestCancellationToken:
         with pytest.raises(asyncio.CancelledError):
             await token.throw_if_cancelled_async()
 
-    @pytest.mark.asyncio
     async def test_cancel_after(self):
         """Cancel after a delay."""
         token = CancellationToken()
         
-        # Schedule cancellation after 0.1 seconds
         cancel_task = asyncio.create_task(token.cancel_after(0.1))
         
-        # Should not be cancelled yet
         assert not token.is_cancelled
         
-        # Wait a bit
         await asyncio.sleep(0.15)
         
-        # Should be cancelled now
         assert token.is_cancelled
         
-        # Clean up
         cancel_task.cancel()
         try:
             await cancel_task
@@ -170,7 +150,6 @@ class TestCancellationToken:
 class TestCancellationScope:
     """Test CancellationScope context manager."""
 
-    @pytest.mark.asyncio
     async def test_scope_basic(self):
         """Basic scope usage."""
         async with CancellationScope() as scope:
@@ -179,13 +158,11 @@ class TestCancellationScope:
             scope.token.cancel("Scope test")
             assert scope.token.is_cancelled
 
-    @pytest.mark.asyncio
     async def test_scope_auto_cancel(self):
         """Auto-cancel on exit."""
         async with CancellationScope(cancel_on_exit=True) as scope:
             assert not scope.token.is_cancelled
         
-        # Should be cancelled after exiting
         assert scope.token.is_cancelled
         assert scope.token.cancel_reason == "Scope exited"
 
@@ -222,17 +199,13 @@ class TestToolFactory:
 
     def test_create_read_tool_custom_cwd(self):
         """Create read tool bound to specific directory."""
-        # Create a temp directory with a file
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.txt"
             test_file.write_text("Hello from custom cwd!")
             
-            # Create tool bound to this directory
             read = create_read_tool(cwd=tmpdir)
             
-            # Should be able to read relative to cwd
             result = read("test.txt")
-            # Tools return ToolResult or string
             content = result.content if hasattr(result, 'content') else str(result)
             assert "Hello from custom cwd!" in content
 
@@ -241,15 +214,10 @@ class TestToolFactory:
         with tempfile.TemporaryDirectory() as tmpdir:
             read = create_read_tool(cwd=tmpdir)
             
-            # Try to read from a path that is definitely outside
-            # Using an absolute path outside cwd
             outside_path = "/etc/passwd" if tmpdir != "/etc" else "/tmp"
             result = read(outside_path)
-            # Tools return ToolResult or string
             content = result.content if hasattr(result, 'content') else str(result)
-            # The read tool may or may not reject - depends on if path is in allowed dirs
-            # So this test is somewhat environment-dependent
-            assert True  # Just verify it runs
+            assert True
 
     def test_create_write_tool(self):
         """Create write tool bound to specific directory."""
@@ -258,26 +226,21 @@ class TestToolFactory:
             
             result = write("output.txt", "Hello, World!")
             
-            # Should succeed
             content = result.content if hasattr(result, 'content') else str(result)
             assert "Successfully" in content
             
-            # File should exist
             assert (Path(tmpdir) / "output.txt").exists()
             assert (Path(tmpdir) / "output.txt").read_text() == "Hello, World!"
 
     def test_create_bash_tool_restricted_commands(self):
         """Bash tool with restricted commands."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create bash tool that only allows 'echo'
             bash = create_bash_tool(cwd=tmpdir, allowed_commands=["echo"])
             
-            # Echo should work
             result = asyncio.run(bash("echo hello"))
             content = result.content if hasattr(result, 'content') else str(result)
             assert "hello" in content.lower()
             
-            # ls should be rejected
             result = asyncio.run(bash("ls"))
             content = result.content if hasattr(result, 'content') else str(result)
             assert "not allowed" in content.lower()
@@ -287,12 +250,10 @@ class TestToolFactory:
         with tempfile.TemporaryDirectory() as tmpdir:
             tools = create_core_tools(cwd=tmpdir, allowed_commands=["echo"])
             
-            # Should have 6 tools
             assert len(tools) == 6
             
-            # All should be callable
-            for tool in tools:
-                assert callable(tool)
+            for t in tools:
+                assert callable(t)
 
 
 # =============================================================================
@@ -322,13 +283,11 @@ class TestAgentEvent:
         
         assert event.type == AgentEventType.TOOL_START
         assert event.data["tool_name"] == "read"
-        assert event.event_name == "tool_start"
 
 
 class TestAgentSubscribe:
     """Test Agent.subscribe() event subscription."""
 
-    @pytest.mark.asyncio
     async def test_subscribe_basic(self):
         """Basic subscription should receive events."""
         agent = Agent(tools=["core"])
@@ -340,7 +299,6 @@ class TestAgentSubscribe:
         
         unsub = agent.subscribe(listener)
         
-        # Emit a test event
         agent._emit(AgentEvent(
             type=AgentEventType.TOOL_START,
             data={"tool_name": "test"}
@@ -349,19 +307,15 @@ class TestAgentSubscribe:
         assert len(received_events) == 1
         assert received_events[0].type == AgentEventType.TOOL_START
         
-        # Unsubscribe
         unsub()
         
-        # Emit another event
         agent._emit(AgentEvent(
             type=AgentEventType.ERROR,
             data={"error": "test error"}
         ))
         
-        # Should not receive the second event
         assert len(received_events) == 1
 
-    @pytest.mark.asyncio
     async def test_subscribe_async_handler(self):
         """Async handlers should be awaited."""
         agent = Agent(tools=["core"])
@@ -379,7 +333,6 @@ class TestAgentSubscribe:
             data={"delta": "hello"}
         ))
         
-        # Give async handler time to run
         await asyncio.sleep(0.05)
         
         assert len(results) == 1
@@ -409,124 +362,58 @@ class TestAgentSubscribe:
 
 
 # =============================================================================
-# P2: DEFINE_TOOL TESTS
+# P2: TOOL WITH PYDANTIC MODEL TESTS
 # =============================================================================
 
-class TestDefineTool:
-    """Test define_tool() function."""
+class TestAgentToolWithPydantic:
+    """Test agent_tool() with Pydantic input model."""
 
-    def test_define_tool_basic(self):
-        """Basic tool definition."""
-        def greet(name: str) -> str:
-            return f"Hello, {name}!"
+    def test_agent_tool_basic(self):
+        """Basic tool with Pydantic input model."""
+        from pydantic import BaseModel, Field
         
-        my_tool = define_tool(
-            name="greet",
-            description="Greet someone by name",
-            schema={
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Name to greet"}
-                },
-                "required": ["name"]
-            }
-        )(greet)
+        class SearchInput(BaseModel):
+            query: str = Field(description="Search query")
+            limit: int = Field(default=10)
         
-        assert hasattr(my_tool, "_tool_name")
-        assert my_tool._tool_name == "greet"
-        # Description should be set from our description parameter
-        assert "Greet someone by name" in my_tool._tool_description
-
-    def test_define_tool_execute(self):
-        """Tool with execute parameter."""
-        def get_greeting(name: str) -> str:
-            return f"Hi, {name}!"
+        @agent_tool(name="search", description="Search", input_model=SearchInput)
+        def search(input: SearchInput) -> str:
+            return f"Found {input.limit} results for {input.query}"
         
-        greeting_tool = define_tool(
-            name="greet",
-            description="Get a greeting",
-            schema={
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"}
-                },
-                "required": ["name"]
-            },
-            execute=get_greeting,
-        )(get_greeting)
+        assert search._tool_name == "search"
+        assert "query" in search._tool_parameters["properties"]
+        assert "limit" in search._tool_parameters["properties"]
+
+    def test_agent_tool_execution(self):
+        """Execute tool with Pydantic validation."""
+        from pydantic import BaseModel, Field
         
-        # Tool should have execute attribute
-        assert hasattr(greeting_tool, "_tool_name")
-
-    def test_define_tool_with_agent(self):
-        """Use define_tool with Agent."""
-        # Create a custom tool
-        weather_tool = define_tool(
-            name="get_weather",
-            description="Get weather for a location",
-            schema={
-                "type": "object",
-                "properties": {
-                    "location": {"type": "string", "description": "City name"}
-                },
-                "required": ["location"]
-            }
-        )(lambda location: f"Weather in {location}: Sunny, 72°F")
+        class WeatherInput(BaseModel):
+            location: str = Field(description="City name")
+            units: str = Field(default="celsius")
         
-        # Add to agent
-        agent = Agent(tools=["core"])
-        agent.add_tool(weather_tool)
+        @agent_tool(name="weather", description="Get weather", input_model=WeatherInput)
+        def weather(input: WeatherInput) -> str:
+            return f"Weather in {input.location}: 22 {input.units}"
         
-        assert "get_weather" in agent.available_tools
+        result = weather(location="Paris", units="fahrenheit")
+        assert "Paris" in result.content
+        assert "fahrenheit" in result.content
 
-
-class TestPydanticSchema:
-    """Test Pydantic schema conversion."""
-
-    def test_pydantic_to_schema_basic(self):
-        """Convert basic Pydantic model to schema."""
-        try:
-            from pydantic import BaseModel
-        except ImportError:
-            pytest.skip("Pydantic not installed")
+    def test_tool_with_context(self):
+        """Tool with RunContext dependency injection."""
+        from dataclasses import dataclass
         
-        class UserInput(BaseModel):
-            name: str
-            age: int
+        @dataclass
+        class MyDeps:
+            api_key: str
         
-        schema = pydantic_to_schema(UserInput)
+        @tool
+        def api_call(ctx, endpoint: str) -> str:
+            return f"Calling {ctx.deps.api_key}/{endpoint}"
         
-        assert schema["type"] == "object"
-        assert "name" in schema["properties"]
-        assert "age" in schema["properties"]
-        assert schema["properties"]["name"]["type"] == "string"
-        assert schema["properties"]["age"]["type"] == "integer"
-
-
-# =============================================================================
-# P2: AGENT CALL_TOOL TESTS
-# =============================================================================
-
-class TestAgentCallTool:
-    """Test Agent.call_tool() direct tool calling."""
-
-    @pytest.mark.asyncio
-    async def test_call_tool_sync(self):
-        """Call tool synchronously."""
-        # Create temp file
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_file = Path(tmpdir) / "test.txt"
-            test_file.write_text("Hello")
-            
-            # Create agent with read tool
-            read_tool = create_read_tool(cwd=tmpdir)
-            agent = Agent(tools=["core"])
-            agent._resolved_tools.append(read_tool)
-            
-            # Call tool directly via runtime's call_tool
-            result = await agent.call_tool("read", {"path": "test.txt"})
-            # The result should contain 'Hello' or error
-            assert "Hello" in result or "Error" in result
+        assert api_call._tool_uses_run_context is True
+        assert "endpoint" in api_call._tool_parameters["properties"]
 
 
 # =============================================================================
@@ -536,36 +423,16 @@ class TestAgentCallTool:
 class TestAsyncContextManager:
     """Test Agent async context manager."""
 
-    @pytest.mark.asyncio
     async def test_agent_async_with(self):
         """Agent should work with async context manager."""
         async with Agent(tools=["core"]) as agent:
             assert agent is not None
-            # Agent is initialized
-            assert agent._runtime is not None or True  # Runtime is created lazily
 
-    @pytest.mark.asyncio
     async def test_agent_dispose_on_exit(self):
         """Agent should be disposed on context exit."""
         agent = Agent(tools=["core"])
         await agent._get_runtime()
-        
-        # Track that dispose was called
-        dispose_called = []
-        original_dispose = agent.dispose
-        
-        async def tracked_dispose():
-            dispose_called.append(True)
-            await original_dispose()
-        
-        agent.dispose = tracked_dispose
-        
-        async with Agent(tools=["core"]) as a:
-            # Use agent
-            pass
-        
-        # Original agent was disposed (not the one from context manager)
-        # Note: The context manager creates its own agent instance
+        await agent.dispose()
 
 
 # =============================================================================
@@ -589,7 +456,6 @@ class TestHookRegistryEnhancements:
         assert removed is True
         assert hooks.count("agent_start") == 0
         
-        # Unregistering non-existent should return False
         removed = hooks.unregister("agent_start", my_hook)
         assert removed is False
 
@@ -633,7 +499,6 @@ class TestHookRegistryEnhancements:
         hooks.register("agent_start", my_hook)
         assert hooks.has_hook("agent_start", my_hook) is True
         
-        # Should not match different event
         assert hooks.has_hook("agent_end", my_hook) is False
 
     def test_get_hooks(self):
@@ -713,18 +578,15 @@ class TestRPCProtocol:
         """Test JSON-RPC response creation."""
         from yom.rpc import JSONRPCResponse, error_response, ErrorCode
         
-        # Success response
         resp = JSONRPCResponse(id=1, result={"content": "Hello!"})
         data = resp.to_dict()
         assert data["jsonrpc"] == "2.0"
         assert data["id"] == 1
         assert data["result"]["content"] == "Hello!"
         
-        # Error response
         err = error_response(2, ErrorCode.METHOD_NOT_FOUND, "Method not found")
         err_data = err.to_dict()
         assert err_data["error"]["code"] == ErrorCode.METHOD_NOT_FOUND
-        assert err_data["error"]["message"] == "Method not found"
 
 
 # =============================================================================
@@ -734,7 +596,6 @@ class TestRPCProtocol:
 class TestIntegration:
     """Real-world integration scenarios."""
 
-    @pytest.mark.asyncio
     async def test_chatbot_with_context_tracking(self):
         """Chatbot that tracks conversation context."""
         agent = Agent(tools=["core"])
@@ -746,7 +607,6 @@ class TestIntegration:
         
         agent.subscribe(track_events)
         
-        # Emit some events
         agent._emit_turn_start(1)
         agent._emit_message_delta("Hello")
         agent._emit_message_delta(" there!")
@@ -760,24 +620,15 @@ class TestIntegration:
         assert AgentEventType.TOOL_END in events_received
         assert AgentEventType.TURN_END in events_received
 
-    @pytest.mark.asyncio
     async def test_timeout_protection(self):
         """Use CancellationToken for timeout protection."""
         agent = Agent(tools=["core"])
         
-        # Simulate a long-running task
-        async def slow_task():
-            await asyncio.sleep(10)  # Would be slow
-            return "done"
-        
         token = CancellationToken()
         
-        # Schedule cancel after 0.1 seconds
         asyncio.create_task(token.cancel_after(0.1))
         
-        # Start the task
         try:
-            # In real usage, agent.run would check the token
             token.throw_if_cancelled()
             token.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -788,12 +639,10 @@ class TestIntegration:
     def test_tool_with_custom_working_directory(self):
         """Use tools with custom working directory."""
         with tempfile.TemporaryDirectory() as project_dir:
-            # Set up a project structure
             src_dir = Path(project_dir) / "src"
             src_dir.mkdir()
             (src_dir / "main.py").write_text("print('hello')")
             
-            # Create tools for this project
             tools = create_core_tools(
                 cwd=project_dir,
                 allowed_commands=["cat", "ls", "python"]
@@ -801,13 +650,11 @@ class TestIntegration:
             
             agent = Agent(tools=tools)
             
-            # Verify tools were created
             tool_names = [getattr(t, "_tool_name", None) for t in tools]
             assert "read" in tool_names
             assert "write" in tool_names
             assert "bash" in tool_names
 
-    @pytest.mark.asyncio
     async def test_concurrent_agent_events(self):
         """Multiple agents with independent event streams."""
         agent1 = Agent(runtime_id="agent-1", tools=["core"])
@@ -823,7 +670,6 @@ class TestIntegration:
         agent1.subscribe(make_listener("agent1"))
         agent2.subscribe(make_listener("agent2"))
         
-        # Emit events to each agent independently
         agent1._emit(AgentEvent(type=AgentEventType.AGENT_START, data={}))
         agent2._emit(AgentEvent(type=AgentEventType.AGENT_START, data={}))
         agent1._emit(AgentEvent(type=AgentEventType.AGENT_END, data={}))

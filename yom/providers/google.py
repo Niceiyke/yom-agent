@@ -1,79 +1,68 @@
-"""Google Gemini provider implementation."""
+"""Google-compatible provider for yom.
+
+Works with Google's Gemini models via the Google AI API.
+
+Usage:
+    provider = GoogleCompatibleProvider(api_key="...")
+    
+    # Or via factory
+    provider = create_provider(
+        provider="google",
+        model="gemini-2.0-flash",
+        api_key="...",
+    )
+"""
 
 from __future__ import annotations
 
 import os
-import time
-import uuid
 from typing import Any, AsyncIterator
 
 from yom.providers.base import BaseProvider, CompletionConfig, LLMResponse, Message, StreamChunk, Usage
 
 
-class GoogleProvider(BaseProvider):
-    """Google Gemini provider using the official Google SDK."""
+class GoogleCompatibleProvider(BaseProvider):
+    """Google-compatible provider using the official Google GenAI SDK."""
 
     def __init__(
         self,
         api_key: str | None = None,
         base_url: str | None = None,
     ):
+        """
+        Initialize Google-compatible provider.
+        
+        Args:
+            api_key: Google API key. Defaults to GOOGLE_API_KEY env var.
+            base_url: Custom API URL if needed.
+        """
         self._api_key = api_key
         self._base_url = base_url
         self._client: Any = None
 
     @property
     def provider_name(self) -> str:
-        return "google"
+        return "google-compatible"
 
     @property
     def client(self) -> Any:
         """Get or create cached client."""
         if self._client is None:
-            from google import genai
-            self._client = genai.Client(api_key=self._get_api_key())
+            from google.genai import AsyncClient
+            self._client = AsyncClient(
+                api_key=self._get_api_key(),
+            )
         return self._client
 
-    def convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Convert unified Message list to Google format."""
-        contents = []
-        for msg in messages:
-            if msg.role == "system":
-                continue  # System messages handled separately
-            parts = [{"text": msg.content}]
-            contents.append({
-                "role": msg.role,
-                "parts": parts,
-            })
-        return contents
-
     def _get_api_key(self) -> str:
-        api_key = self._api_key
-        if not api_key:
-            api_key = os.environ.get("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY environment variable is required")
-        return api_key
-
-    async def _retry_request(self, request_fn, config: CompletionConfig) -> Any:
-        """Execute request with retry logic for transient failures."""
-        last_error: Exception | None = None
-        for attempt in range(config.max_retries + 1):
-            try:
-                return await request_fn()
-            except Exception as exc:
-                last_error = exc
-                if attempt < config.max_retries:
-                    if "rate_limit" in str(exc).lower() or "429" in str(exc):
-                        wait_time = (2 ** attempt) * 1.0
-                        time.sleep(wait_time)
-                        continue
-                    if "500" in str(exc) or "502" in str(exc) or "503" in str(exc):
-                        wait_time = (2 ** attempt) * 0.5
-                        time.sleep(wait_time)
-                        continue
-                break
-        raise last_error if last_error else RuntimeError("Request failed")
+        """Get API key from config or environment."""
+        if self._api_key:
+            return self._api_key
+        for var in ["GOOGLE_API_KEY", "API_KEY"]:
+            key = os.environ.get(var)
+            if key:
+                return key
+        raise ValueError("GOOGLE_API_KEY environment variable is required")
 
     async def complete(
         self,
@@ -82,167 +71,171 @@ class GoogleProvider(BaseProvider):
         config: CompletionConfig | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
-        """Send completion request to Google Gemini."""
-        try:
-            from google import genai
-        except ImportError as exc:
-            raise ImportError(
-                "Google Gemini support requires installing 'google-genai' package: pip install google-genai"
-            ) from exc
-
+        """Send completion request to Google."""
         config = config or CompletionConfig()
-        
-        # Validate and ensure unique tool call IDs
-        messages = self.validate_tool_call_ids(messages)
 
-        system_instruction = ""
-        google_contents = []
+        # Convert messages to Google format
+        google_messages = []
         for msg in messages:
             if msg.role == "system":
-                system_instruction = msg.content
+                google_messages.append({"role": "user", "parts": [{"text": f"System: {msg.content}"}]})
             elif msg.role == "tool":
-                # Google uses functionResponse parts
-                tool_name = msg.name or "unknown"
-                google_contents.append({
+                google_messages.append({
                     "role": "model",
                     "parts": [{
                         "functionResponse": {
-                            "name": tool_name,
+                            "name": getattr(msg, "name", "unknown"),
                             "response": {"content": msg.content}
                         }
                     }]
                 })
-            elif msg.role == "assistant" and msg._tool_calls:
-                # Convert tool_calls to function calls
+            elif getattr(msg, "_tool_calls", None):
                 parts = []
                 for tc in msg._tool_calls:
-                    tc_id = tc.get("id", f"call_{uuid.uuid4().hex[:8]}")
                     func = tc.get("function", {})
                     parts.append({
                         "functionCall": {
-                            "id": tc_id,
+                            "id": tc.get("id", ""),
                             "name": func.get("name", ""),
                             "args": func.get("arguments", {}),
                         }
                     })
-                google_contents.append({"role": "model", "parts": parts})
+                google_messages.append({"role": "user", "parts": parts})
             else:
-                role = "user" if msg.role == "user" else "model"
-                google_contents.append({"role": role, "parts": [{"text": msg.content}]})
+                google_messages.append({
+                    "role": "model" if msg.role == "assistant" else "user",
+                    "parts": [{"text": msg.content}]
+                })
 
-        gemini_model = model
-        if not gemini_model.startswith("models/"):
-            gemini_model = f"models/{gemini_model}"
-
-        async def make_request():
-            request_kwargs: dict[str, Any] = {
-                "model": gemini_model,
-                "contents": google_contents,
-            }
-            if system_instruction:
-                request_kwargs["system_instruction"] = {"parts": [{"text": system_instruction}]}
-            config_dict = {}
-            if config.temperature:
-                config_dict["temperature"] = config.temperature
-            if config.max_tokens:
-                config_dict["max_output_tokens"] = config.max_tokens
-            if config_dict:
-                request_kwargs["config"] = config_dict
-            return await self.client.aio.models.generate_content(**request_kwargs)
+        request_kwargs: dict[str, Any] = {
+            "model": model,
+            "contents": google_messages,
+        }
+        if config.temperature:
+            request_kwargs["config"] = {"temperature": config.temperature}
+        if tools:
+            request_kwargs["tools"] = self._convert_tools(tools)
 
         try:
-            response = await self._retry_request(make_request, config)
+            response = await self.client.models.generate_content(**request_kwargs)
         except Exception as exc:
-            raise RuntimeError(f"Google Gemini request failed after {config.max_retries} retries: {exc}") from exc
+            raise RuntimeError(f"Google request failed: {exc}") from exc
 
+        # Extract text
         text = ""
-        for candidate in response.candidates:
-            if hasattr(candidate, "content") and candidate.content:
-                for part in candidate.content.parts:
-                    if hasattr(part, "text") and part.text:
-                        text += part.text
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, "text") and part.text:
+                text += part.text
 
-        stop_reason = None
-        if response.candidates:
-            candidate = response.candidates[0]
-            if hasattr(candidate, "finish_reason"):
-                stop_reason = str(candidate.finish_reason)
-
+        # Usage
         usage = None
         if hasattr(response, "usage_metadata"):
             usage = Usage(
-                input_tokens=getattr(response.usage_metadata, "prompt_token_count", 0),
-                output_tokens=getattr(response.usage_metadata, "candidates_token_count", 0),
-                total_tokens=getattr(response.usage_metadata, "total_token_count", 0),
+                input_tokens=response.usage_metadata.prompt_token_count,
+                output_tokens=response.usage_metadata.candidates_token_count,
+                total_tokens=response.usage_metadata.total_token_count,
             )
 
-        raw = {}
-        if hasattr(response, "model_dump"):
-            raw = response.model_dump()
-        elif hasattr(response, "to_dict"):
-            raw = response.to_dict()
-
-        return LLMResponse(
+        result = LLMResponse(
             content=text,
             model=model,
             usage=usage,
-            stop_reason=stop_reason,
-            raw=raw,
+            stop_reason=str(response.candidates[0].finish_reason) if response.candidates else None,
+            raw={"response": response},
         )
+        
+        # Validate (disabled by default, enable with YOM_VALIDATE=1)
+        from yom.providers.validation import validate_google_response, validate_message_format
+        validate_message_format("google", google_messages)
+        validate_google_response(result)
+        
+        return result
 
     async def stream(
         self,
         messages: list[Message],
         model: str,
         config: CompletionConfig | None = None,
-        tools: list[dict[str, Any]] | None = None,  # type: ignore[override]
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream completion from Google Gemini."""
-        try:
-            from google import genai
-        except ImportError as exc:
-            raise ImportError(
-                "Google Gemini support requires installing 'google-genai' package: pip install google-genai"
-            ) from exc
-
+        """Stream completion from Google."""
         config = config or CompletionConfig()
 
-        client = genai.Client(api_key=self._get_api_key())
-
-        system_instruction = ""
-        google_contents = []
+        google_messages = []
         for msg in messages:
             if msg.role == "system":
-                system_instruction = msg.content
+                google_messages.append({"role": "user", "parts": [{"text": f"System: {msg.content}"}]})
             else:
-                google_contents.append({
-                    "role": msg.role,
-                    "parts": [{"text": msg.content}],
+                google_messages.append({
+                    "role": "model" if msg.role == "assistant" else "user",
+                    "parts": [{"text": msg.content}]
                 })
 
-        gemini_model = model
-        if not gemini_model.startswith("models/"):
-            gemini_model = f"models/{gemini_model}"
-
         request_kwargs: dict[str, Any] = {
-            "model": gemini_model,
-            "contents": google_contents,
-            "config": {"temperature": config.temperature} if config.temperature else {},
+            "model": model,
+            "contents": google_messages,
+            "stream": True,
         }
-        if system_instruction:
-            request_kwargs["system_instruction"] = {"parts": [{"text": system_instruction}]}
+        if config.temperature:
+            request_kwargs["config"] = {"temperature": config.temperature}
 
-        response = await client.aio.models.generate_content_stream(**request_kwargs)
+        try:
+            async for chunk in await self.client.models.generate_content_stream(**request_kwargs):
+                for part in chunk.candidates[0].content.parts:
+                    if hasattr(part, "text") and part.text:
+                        yield StreamChunk(content=part.text, is_final=False)
+        except Exception as exc:
+            yield StreamChunk(content=f"Error: {exc}", is_final=True)
 
-        async for chunk in response:
-            if chunk.candidates:
-                candidate = chunk.candidates[0]
-                if candidate.content and candidate.content.parts:
-                    for part in candidate.content.parts:
-                        if hasattr(part, "text") and part.text:
-                            yield StreamChunk(
-                                content=part.text,
-                                is_final=False,
-                            )
+    def _convert_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert tools to Google format."""
+        google_tools = []
+        for tool in tools:
+            func = tool.get("function", tool)
+            google_tools.append({
+                "name": func.get("name", ""),
+                "description": func.get("description", ""),
+                "parameters": func.get("parameters", {}),
+            })
+        return {"function_declarations": google_tools}
 
-        yield StreamChunk(content="", is_final=True)
+    def convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
+        """Convert unified Message list to Google format."""
+        result = []
+        for msg in messages:
+            if msg.role == "system":
+                continue  # Handled differently
+            elif msg.role == "tool":
+                result.append({
+                    "role": "model",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": getattr(msg, "name", "unknown"),
+                            "response": {"content": msg.content}
+                        }
+                    }]
+                })
+            elif getattr(msg, "_tool_calls", None):
+                parts = []
+                for tc in msg._tool_calls:
+                    func = tc.get("function", {})
+                    parts.append({
+                        "functionCall": {
+                            "id": tc.get("id", ""),
+                            "name": func.get("name", ""),
+                            "args": func.get("arguments", {}),
+                        }
+                    })
+                result.append({"role": "user", "parts": parts})
+            else:
+                result.append({
+                    "role": "model" if msg.role == "assistant" else "user",
+                    "parts": [{"text": msg.content}]
+                })
+        return result
+
+# Alias for backwards compatibility
+GoogleProvider = GoogleCompatibleProvider
+
+
+__all__ = ["GoogleCompatibleProvider", "GoogleProvider"]

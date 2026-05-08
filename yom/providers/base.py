@@ -3,61 +3,58 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
+
+from pydantic import BaseModel, Field
 import time
 import uuid
 
 
-@dataclass
-class Usage:
+class Usage(BaseModel):
     """Token usage statistics."""
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
 
 
-@dataclass
-class LLMResponse:
+class LLMResponse(BaseModel):
     """Provider-agnostic response from LLM."""
-    content: str
-    model: str
+    content: str = ""
+    model: str = ""
     usage: Usage | None = None
     stop_reason: str | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class CompletionConfig:
+class CompletionConfig(BaseModel):
     """Configuration for completion requests."""
     temperature: float = 0.7
     max_tokens: int = 4096
     top_p: float | None = None
-    stop_sequences: list[str] = field(default_factory=list)
+    stop_sequences: list[str] = Field(default_factory=list)
     timeout: float = 120.0
     max_retries: int = 3
 
 
-@dataclass
-class StreamChunk:
+class StreamChunk(BaseModel):
     """A chunk of a streaming response."""
     content: str = ""
     is_final: bool = False
     stop_reason: str | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class Message:
+class Message(BaseModel):
     """Unified message format for all providers."""
     role: str
-    content: str
+    content: str = ""
     tool_call_id: str | None = None
     name: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     _tool_calls: list[dict[str, Any]] | None = None
     
-    def __post_init__(self):
+    def __init__(self, **data):
+        super().__init__(**data)
         # Auto-generate unique ID for tool calls if needed
         if self.role == "tool" and self.tool_call_id is None:
             self.tool_call_id = f"call_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"

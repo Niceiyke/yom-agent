@@ -135,7 +135,6 @@ class Agent:
             github_api, github_read_file, github_search,
             s3_put, s3_get, s3_list,
             shell, shell_script,
-            telegram_send,
         )
         
         TOOLSET_TOOLS = {
@@ -151,7 +150,6 @@ class Agent:
             "s3_list": s3_list,
             "shell": shell,
             "shell_script": shell_script,
-            "telegram_send": telegram_send,
         }
         
         resolved = []

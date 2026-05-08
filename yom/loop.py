@@ -25,6 +25,40 @@ if TYPE_CHECKING:
     from yom.cancellation import CancellationToken
 
 
+# Patterns for stripping thinking/reasoning tags
+THINKING_PATTERNS = [
+    re.compile(r'<think\s*>([\s\S]*?)<\/think\s*>', re.IGNORECASE),
+    re.compile(r'<thinking\s*>([\s\S]*?)<\/thinking\s*>', re.IGNORECASE),
+    re.compile(r'\s*<think>[\s\S]*?</think>\s*', re.IGNORECASE),
+    re.compile(r'\s*\[THINKING\][\s\S]*?\[/THINKING\]\s*', re.IGNORECASE),
+]
+
+
+
+def strip_thinking_tags(content: str) -> str:
+    """Strip thinking/reasoning tags from content.
+    
+    Removes patterns like:
+    - <think>...</think>
+    - <thinking>...</thinking>
+    - <think>...</think>
+    
+    Args:
+        content: Raw content from LLM response
+        
+    Returns:
+        Content with thinking tags removed
+    """
+    if not content:
+        return content
+    
+    result = content
+    for pattern in THINKING_PATTERNS:
+        result = pattern.sub('', result)
+    
+    return result.strip()
+
+
 @dataclass
 class ToolCall:
     """A tool call request from the LLM."""
@@ -158,15 +192,26 @@ class AgentLoop:
             return tool_calls
 
         # Anthropic format: response.raw might have content blocks with input
+        # Handle both dict and object (ToolUseBlock) formats
         if "content" in raw:
             content_blocks = raw.get("content", [])
             if isinstance(content_blocks, list):
                 for block in content_blocks:
-                    if isinstance(block, dict) and block.get("type") == "tool_use":
-                        tool_calls.append(ToolCall(
-                            name=block.get("name", ""),
-                            arguments=block.get("input", {}),
-                        ))
+                    block_type = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
+                    block_name = block.get("name") if isinstance(block, dict) else getattr(block, "name", None)
+                    block_input = block.get("input") if isinstance(block, dict) else getattr(block, "input", None)
+                    block_id = block.get("id") if isinstance(block, dict) else getattr(block, "id", None)
+                    if block_type == "tool_use" and block_name:
+                        tool_call = ToolCall(
+                            name=block_name,
+                            arguments=block_input if isinstance(block_input, dict) else {},
+                        )
+                        # Preserve original tool_use_id - this is critical for Anthropic
+                        # because tool results must reference the exact id from tool_use
+                        if block_id:
+                            tool_call.id = block_id
+                            tool_call.tool_call_id = block_id
+                        tool_calls.append(tool_call)
                 if tool_calls:
                     return tool_calls
 
@@ -317,6 +362,7 @@ class AgentLoop:
             tool_calls = self._parse_tool_calls(response)
 
             if not tool_calls:
+                # Clean thinking tags but keep the thinking content visible
                 return response.content, all_tool_calls, total_tool_calls
 
             # Generate unique IDs for all tool calls in this turn
@@ -373,9 +419,16 @@ class AgentLoop:
 
             assistant_msg = Message(
                 role="assistant",
-                content=response.content,
+                content=response.content or "",
             )
             provider_messages.append(assistant_msg)
+            
+            # Store raw content blocks in metadata (for MiniMax/Anthropic compatibility)
+            # The response.raw contains content blocks (ThinkingBlock, ToolUseBlock, etc.)
+            # that need to be preserved for the tool_use protocol
+            raw_content = response.raw.get("content")
+            if raw_content:
+                assistant_msg.metadata["_raw_content"] = raw_content
 
             # Add tool_calls to assistant message if there were tool calls
             if tool_calls:

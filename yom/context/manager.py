@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
-from yom.context.tokenizer import TokenCounter, create_token_counter
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from yom.models.messages import Message
@@ -24,8 +23,7 @@ class TruncationStrategy(str, Enum):
     TRUNCATE_AND_SUMMARIZE = "truncate_and_summarize"
 
 
-@dataclass
-class ContextStats:
+class ContextStats(BaseModel):
     """Statistics about context usage."""
 
     total_tokens: int
@@ -34,8 +32,7 @@ class ContextStats:
     utilization_pct: float
 
 
-@dataclass
-class ContextConfig:
+class ContextConfig(BaseModel):
     """Configuration for context management."""
 
     max_tokens: int = 128000
@@ -44,6 +41,8 @@ class ContextConfig:
     preserve_system_prompt: bool = True
     preserve_last_n_messages: int = 0
     summarizer_fn: Callable[[list[dict]], str] | None = None
+
+    model_config = {"arbitrary_types_allowed": True}
 
 
 class ContextManager:
@@ -59,9 +58,10 @@ class ContextManager:
     def __init__(
         self,
         config: ContextConfig | None = None,
-        token_counter: TokenCounter | None = None,
+        token_counter: "TokenCounter | None" = None,
     ):
         self.config = config or ContextConfig()
+        from yom.context.tokenizer import TokenCounter, create_token_counter
         self._token_counter = token_counter or create_token_counter(
             self.config.tokenizer_backend
         )

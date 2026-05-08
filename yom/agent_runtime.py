@@ -51,9 +51,8 @@ class AgentRuntime:
     """
     Main orchestrator for agent execution.
 
-
     Owns dependency graph, creates/loads agent state, runs agent loop,
-    and coordinates sessions/events/hooks/sub-agents.
+    and coordinates sessions/events/sub-agents.
     """
 
     _provider: BaseProvider | None = None
@@ -88,11 +87,7 @@ class AgentRuntime:
         return None
 
     async def call_tool(self, name: str, input_data: dict[str, Any]) -> str:
-        """
-        Call a tool by name with input data.
-
-        Returns the tool result as a string.
-        """
+        """Call a tool by name with input data."""
         tool = self.get_tool(name)
         if tool is None:
             return f"unknown_tool: {name}"
@@ -121,11 +116,7 @@ class AgentRuntime:
         )
 
     async def run_turn(self, state: AgentState) -> str:
-        """
-        Run a single turn of the agent loop.
-
-        Returns the assistant's response text.
-        """
+        """Run a single turn of the agent loop."""
         raise NotImplementedError("Subclass must implement run_turn")
 
     async def run_prompt(
@@ -133,14 +124,9 @@ class AgentRuntime:
         prompt: str,
         session_id: str | None = None,
     ) -> RuntimeRunResult:
-        """
-        Run a complete prompt through the agent.
-
-        Creates a new session or resumes existing one.
-        """
+        """Run a complete prompt through the agent."""
         session_id = session_id or str(uuid.uuid4())
 
-        # Try to load existing session
         state = None
         if self._settings.session_backend:
             state = await self._settings.session_backend.load(session_id)
@@ -153,7 +139,6 @@ class AgentRuntime:
         try:
             result = await self.run_turn(state)
 
-            # Save session if backend configured
             if self._settings.session_backend:
                 await self._settings.session_backend.save(session_id, state)
 
@@ -182,11 +167,7 @@ class AgentRuntime:
 
 
 class CoreRuntime(AgentRuntime):
-    """
-    Core AgentRuntime with LLM calls and tool calling.
-
-    Uses yom's provider system for LLM calls.
-    """
+    """Core AgentRuntime with LLM calls and tool calling."""
 
     def __init__(
         self,
@@ -195,13 +176,7 @@ class CoreRuntime(AgentRuntime):
     ):
         super().__init__(deps, settings)
         self._provider = None
-        self._hooks = deps.hooks if deps else None
         self._context_manager = deps.context_manager if deps else None
-
-    @property
-    def hooks(self):
-        """Get the hooks registry."""
-        return self._hooks
 
     @property
     def context_manager(self):
@@ -242,9 +217,6 @@ class CoreRuntime(AgentRuntime):
 
         iteration = state.current_turn
 
-        if self._hooks:
-            await self._hooks.emit("before_turn", state=state, iteration=iteration)
-
         logger.info(
             f"Turn {iteration} starting for runtime_id={self._settings.runtime_id}, message_count={len(state.messages)}"
         )
@@ -283,15 +255,10 @@ class CoreRuntime(AgentRuntime):
             )
         except Exception as e:
             logger.exception(f"Turn {iteration} failed: {e}")
-            if self._hooks:
-                await self._hooks.emit("on_error", state=state, error=str(e))
             response_content = f"Error: {e}"
 
         from yom.models.messages import AssistantMessage
         state.add_message(AssistantMessage(content=response_content))
         state.current_turn += 1
-
-        if self._hooks:
-            await self._hooks.emit("after_turn", state=state, iteration=iteration, response=response_content)
 
         return response_content

@@ -1,11 +1,12 @@
-"""Message types for agent conversations."""
+"""Message types for agent conversations with Pydantic validation."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Self
+
+from pydantic import BaseModel, Field, field_validator
 
 
 def _now() -> datetime:
@@ -21,24 +22,26 @@ class MessageRole(str, Enum):
     TOOL = "tool"
 
 
-@dataclass
-class Message:
-    """Base message type."""
+class Message(BaseModel):
+    """Base message type with Pydantic validation."""
     role: MessageRole
     content: str
-    timestamp: datetime = field(default_factory=_now)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=_now)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"use_enum_values": True}
 
     def to_dict(self) -> dict:
         return {
-            "role": self.role.value,
+            "role": self.role.value if isinstance(self.role, MessageRole) else self.role,
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> Message:
+    def from_dict(cls, data: dict) -> Self:
+        """Deserialize from dictionary."""
         role = MessageRole(data["role"])
         cls_map = {
             MessageRole.SYSTEM: SystemMessage,
@@ -54,65 +57,41 @@ class Message:
             "metadata": data.get("metadata", {}),
         }
 
-        # Assistant message needs tool_calls
         if role == MessageRole.ASSISTANT:
             msg_kwargs["tool_calls"] = data.get("tool_calls", [])
+
+        if role == MessageRole.TOOL:
+            msg_kwargs["tool_name"] = data.get("tool_name", "")
+            msg_kwargs["tool_call_id"] = data.get("tool_call_id")
 
         return msg_cls(**msg_kwargs)
 
 
-@dataclass
 class SystemMessage(Message):
     """System message (e.g., system prompt)."""
-    role: MessageRole = field(default=MessageRole.SYSTEM, init=False)
+    role: MessageRole = Field(default=MessageRole.SYSTEM)
 
 
-@dataclass
 class UserMessage(Message):
     """User message."""
-    role: MessageRole = field(default=MessageRole.USER, init=False)
+    role: MessageRole = Field(default=MessageRole.USER)
 
 
-@dataclass
 class AssistantMessage(Message):
     """Assistant message, may include tool calls."""
-    role: MessageRole = field(default=MessageRole.ASSISTANT, init=False)
-    tool_calls: list[dict] = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        d = super().to_dict()
-        d["tool_calls"] = self.tool_calls
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict) -> AssistantMessage:
-        return cls(
-            content=data["content"],
-            tool_calls=data.get("tool_calls", []),
-            timestamp=datetime.fromisoformat(data.get("timestamp", _now().isoformat())),
-            metadata=data.get("metadata", {}),
-        )
+    role: MessageRole = Field(default=MessageRole.ASSISTANT)
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
 
 
-@dataclass
 class ToolMessage(Message):
     """Tool result message."""
-    role: MessageRole = field(default=MessageRole.TOOL, init=False)
+    role: MessageRole = Field(default=MessageRole.TOOL)
     tool_name: str = ""
     tool_call_id: str | None = None
 
-    def to_dict(self) -> dict:
-        d = super().to_dict()
-        d["tool_name"] = self.tool_name
-        d["tool_call_id"] = self.tool_call_id
-        return d
-
+    @field_validator("tool_call_id", mode="before")
     @classmethod
-    def from_dict(cls, data: dict) -> ToolMessage:
-        return cls(
-            content=data["content"],
-            tool_name=data.get("tool_name", ""),
-            tool_call_id=data.get("tool_call_id"),
-            timestamp=datetime.fromisoformat(data.get("timestamp", _now().isoformat())),
-            metadata=data.get("metadata", {}),
-        )
+    def empty_to_none(cls, v):
+        if v == "":
+            return None
+        return v

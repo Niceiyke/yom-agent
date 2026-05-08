@@ -1,13 +1,14 @@
-"""Agent state model."""
+"""Agent state model with Pydantic validation."""
 
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Self
 
-from yom.models.messages import Message
+from pydantic import BaseModel, Field
+
+from yom.models.messages import Message, UserMessage, AssistantMessage, ToolMessage
 
 
 def _now() -> datetime:
@@ -15,18 +16,18 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-@dataclass
-class AgentState:
-    """Mutable state for an agent session."""
-
+class AgentState(BaseModel):
+    """Mutable state for an agent session with Pydantic validation."""
     session_id: str
     runtime_id: str
-    messages: list[Message] = field(default_factory=list)
+    messages: list[Message] = Field(default_factory=list)
     current_turn: int = 0
     max_turns: int = 50
-    created_at: datetime = field(default_factory=_now)
-    updated_at: datetime = field(default_factory=_now)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"arbitrary_types_allowed": True}
 
     @classmethod
     def create(
@@ -36,7 +37,7 @@ class AgentState:
         initial_messages: list[Message] | None = None,
         max_turns: int = 50,
         system_prompt: str | None = None,
-    ) -> AgentState:
+    ) -> Self:
         """Create a new agent state.
 
         Note: system_prompt is stored in metadata for LLM to use via system_prompt param,
@@ -63,12 +64,10 @@ class AgentState:
 
     def add_user_message(self, content: str) -> None:
         """Add a user message."""
-        from yom.models.messages import UserMessage
         self.add_message(UserMessage(content=content))
 
     def add_assistant_message(self, content: str, tool_calls: list[dict] | None = None) -> None:
         """Add an assistant message."""
-        from yom.models.messages import AssistantMessage
         msg = AssistantMessage(content=content, tool_calls=tool_calls or [])
         self.add_message(msg)
 
@@ -76,7 +75,6 @@ class AgentState:
         self, tool_name: str, content: str, tool_call_id: str | None = None
     ) -> None:
         """Add a tool result message."""
-        from yom.models.messages import ToolMessage
         msg = ToolMessage(
             tool_name=tool_name,
             content=content,
@@ -102,9 +100,8 @@ class AgentState:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> AgentState:
+    def from_dict(cls, data: dict) -> Self:
         """Deserialize from dictionary."""
-        from yom.models.messages import Message
         messages = [Message.from_dict(m) for m in data.get("messages", [])]
         return cls(
             session_id=data["session_id"],
@@ -116,3 +113,7 @@ class AgentState:
             updated_at=datetime.fromisoformat(data["updated_at"]),
             metadata=data.get("metadata", {}),
         )
+
+
+# Import for convenience
+from yom.models.messages import UserMessage, AssistantMessage, ToolMessage

@@ -1,88 +1,126 @@
-"""Provider factory for creating and managing LLM providers."""
+"""Provider factory for yom.
+
+Simple factory for creating LLM providers. No magic - just pass what you need.
+
+## Supported Providers
+
+| Provider | API | Models |
+|----------|-----|--------|
+| `openai` | OpenAI-compatible | gpt-4o, gpt-4-turbo, o1, etc. |
+| `anthropic` | Anthropic-compatible | claude-3-5-sonnet, MiniMax-M2.7, etc. |
+| `google` | Google AI | gemini-2.0-flash, gemini-pro, etc. |
+
+## Quick Start
+
+```python
+from yom.providers import create_provider
+
+# OpenAI
+provider = create_provider(provider="openai", model="gpt-4o")
+
+# Anthropic (Claude)
+provider = create_provider(provider="anthropic", model="claude-3-5-sonnet-latest")
+
+# Google
+provider = create_provider(provider="google", model="gemini-2.0-flash")
+
+# OpenAI-compatible (any server!)
+provider = create_provider(
+    provider="openai",  # or omit - it's the default
+    model="llama3",
+    base_url="http://localhost:11434/v1",  # Ollama
+)
+
+# MiniMax (uses Anthropic-compatible API)
+provider = create_provider(model="MiniMax-M2.7")
+# Or explicitly:
+provider = create_provider(
+    provider="anthropic",
+    model="MiniMax-M2.7",
+    base_url="https://api.minimax.io/anthropic",
+)
+```
+
+## OpenAI-Compatible Servers
+
+The `openai` provider works with ANY OpenAI-compatible API:
+
+- **OpenAI**: https://api.openai.com/v1
+- **Ollama**: http://localhost:11434/v1
+- **LM Studio**: http://localhost:1234/v1
+- **Groq**: https://api.groq.com/openai/v1
+- **Fireworks**: https://api.fireworks.ai/v1
+- **Together AI**: https://api.together.xyz/v1
+- **vLLM**: http://localhost:8000/v1
+- **Azure OpenAI**: (use Azure-specific SDK)
+
+## MiniMax
+
+MiniMax provides an Anthropic-compatible API at `https://api.minimax.io/anthropic`.
+Auto-detected when model name starts with "minimax":
+
+```python
+provider = create_provider(model="MiniMax-M2.7")
+# Sets:
+#   provider="anthropic"
+#   base_url="https://api.minimax.io/anthropic"
+```
+
+## Environment Variables
+
+| Variable | Provider | Notes |
+|----------|----------|-------|
+| `OPENAI_API_KEY` | openai | Default for OpenAI |
+| `ANTHROPIC_API_KEY` | anthropic | Anthropic/MiniMax API key |
+| `MINIMAX_API_KEY` | anthropic | Alias for MiniMax |
+| `GOOGLE_API_KEY` | google | Required for Gemini |
+
+## Custom Base URL
+
+```python
+# Connect to Ollama running locally
+provider = create_provider(
+    provider="openai",
+    model="llama3",
+    base_url="http://localhost:11434/v1",
+)
+
+# Connect to MiniMax explicitly
+provider = create_provider(
+    provider="anthropic",
+    model="MiniMax-M2.7",
+    base_url="https://api.minimax.io/anthropic",
+    api_key="your-minimax-key",
+)
+```
+"""
 
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from typing import Any
 
-from yom.providers.anthropic import AnthropicProvider
 from yom.providers.base import BaseProvider, CompletionConfig, LLMResponse, Message, StreamChunk
-from yom.providers.google import GoogleProvider
-from yom.providers.openai import OpenAIProvider
+from yom.providers.openai import OpenAICompatibleProvider
+from yom.providers.anthropic import AnthropicCompatibleProvider
+from yom.providers.google import GoogleCompatibleProvider
 
-
-# Model prefix to provider mapping
-MODEL_PREFIX_MAP = {
-    "claude": "anthropic",
-    "MiniMax": "openai",  # MiniMax uses OpenAI-compatible API
-}
-
-# Default base URLs for known providers
+# Default API URLs
 DEFAULT_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com",
-    "google": "https://generativelanguage.googleapis.com/v1beta",
-    "minimax": "https://api.minimax.io/v1",
+    "google": None,  # Uses Google's default
 }
 
-# Standard environment variable names per provider
-STANDARD_API_KEYS = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "google": "GOOGLE_API_KEY",
-    "minimax": "MINIMAX_API_KEY",
+# MiniMax Anthropic-compatible endpoint
+MINIMAX_ANTHROPIC_URL = "https://api.minimax.io/anthropic"
+
+# Env vars to check
+API_KEY_VARS = {
+    "openai": ["OPENAI_API_KEY"],
+    "anthropic": ["ANTHROPIC_API_KEY", "MINIMAX_API_KEY"],
+    "google": ["GOOGLE_API_KEY"],
 }
-
-# Additional env vars to check for OpenAI-compatible providers
-OPENAI_COMPATIBLE_API_KEYS = ["OPENAI_API_KEY", "MINIMAX_API_KEY"]
-
-
-def infer_provider(model: str) -> tuple[str, str | None]:
-    """Infer provider name and special base_url from model string.
-
-    Returns:
-        (provider, base_url_override)
-
-    Examples:
-        "claude-3-5-sonnet-latest" -> ("anthropic", None)
-        "gpt-4o" -> ("openai", None)
-        "MiniMax-M2.7" -> ("openai", "https://api.minimax.io/v1")
-    """
-    model_lower = model.lower()
-
-    # Check prefix map
-    for prefix, provider in MODEL_PREFIX_MAP.items():
-        if model_lower.startswith(prefix.lower()):
-            if model_lower.startswith("minimax"):
-                return provider, "https://api.minimax.io/v1"
-            return provider, None
-
-    # Check for known model patterns
-    if "claude" in model_lower:
-        return "anthropic", None
-    if "gpt" in model_lower or "o1" in model_lower or "o3" in model_lower:
-        return "openai", None
-    if "gemini" in model_lower:
-        return "google", None
-    if "mistral" in model_lower:
-        return "openai", None
-    if "llama" in model_lower:
-        return "openai", None
-
-    # Default to OpenAI for unknown models (most common)
-    return "openai", None
-
-
-def get_api_key(provider: str, model: str | None = None) -> str | None:
-    """Get API key for a provider from environment."""
-    # Special handling for OpenAI-compatible providers
-    if provider == "openai" or (model and model.lower().startswith("minimax")):
-        for env_var in ["MINIMAX_API_KEY", "OPENAI_API_KEY"]:
-            key = os.environ.get(env_var)
-            if key:
-                return key
-        return None
-    return os.environ.get(STANDARD_API_KEYS.get(provider, f"{provider.upper()}_API_KEY"))
 
 
 def create_provider(
@@ -91,109 +129,91 @@ def create_provider(
     api_key: str | None = None,
     base_url: str | None = None,
 ) -> BaseProvider:
-    """Create a provider instance.
-
+    """Create an LLM provider.
+    
     Args:
-        model: Model name (used to infer provider if not specified)
-        provider: Explicit provider name (auto-detected if None)
-        api_key: API key (from env if not specified)
-        base_url: Custom base URL (for proxies, etc.)
-
+        model: Model name (e.g., "gpt-4o", "MiniMax-M2.7")
+        provider: Provider type - "openai", "anthropic", or "google"
+                   Auto-detected from model name if not specified.
+        api_key: API key. Falls back to environment variables.
+        base_url: Custom API URL. Useful for proxies or local servers.
+                  Only used for "openai" and "anthropic" providers.
+    
     Returns:
         Provider instance
-
+        
     Examples:
-        # Auto-detect provider from model
-        create_provider(model="claude-3-5-sonnet-latest")
-
-        # Explicit provider
-        create_provider(provider="anthropic", api_key="sk-...")
-
-        # With custom base_url (e.g., proxy)
-        create_provider(
-            model="claude-3-5-sonnet-latest",
-            api_key="sk-...",
-            base_url="https://my-proxy.com/v1"
-        )
+        # Auto-detect from model name
+        p = create_provider(model="MiniMax-M2.7")
+        
+        # OpenAI (default)
+        p = create_provider(model="gpt-4o")
+        
+        # Anthropic (Claude or MiniMax)
+        p = create_provider(provider="anthropic", model="claude-3-5-sonnet-latest")
+        
+        # Google
+        p = create_provider(provider="google", model="gemini-2.0-flash")
+        
+        # Ollama (OpenAI-compatible)
+        p = create_provider(model="llama3", base_url="http://localhost:11434/v1")
     """
-    if provider is None:
-        if model is None:
-            provider = "openai"  # Default
-            inferred_base_url = None
+    # Auto-detect provider from model name
+    if provider is None and model:
+        model_lower = model.lower()
+        if model_lower.startswith("minimax"):
+            provider = "anthropic"  # MiniMax uses Anthropic-compatible API
+            if base_url is None:
+                base_url = MINIMAX_ANTHROPIC_URL
+        elif "claude" in model_lower:
+            provider = "anthropic"
+        elif "gemini" in model_lower:
+            provider = "google"
         else:
-            provider, inferred_base_url = infer_provider(model)
-    else:
-        _, inferred_base_url = infer_provider(model) if model else (None, None)
-
+            provider = "openai"  # Default
+    elif provider is None:
+        provider = "openai"
+    
+    # Get API key from env if not provided
     if api_key is None:
-        api_key = get_api_key(provider, model)
-
-    # Use inferred base_url for special cases, otherwise use provided or default
-    effective_base_url = inferred_base_url or base_url or DEFAULT_BASE_URLS.get(provider)
-
+        # Check provider-specific env vars
+        for var in API_KEY_VARS.get(provider, []):
+            key = os.environ.get(var)
+            if key:
+                api_key = key
+                break
+        # Also check MINIMAX_API_KEY for Anthropic (MiniMax uses this)
+        if provider == "anthropic" and api_key is None:
+            api_key = os.environ.get("MINIMAX_API_KEY")
+    
+    # Set env vars for Anthropic provider (MiniMax compatibility)
     if provider == "anthropic":
-        return AnthropicProvider(api_key=api_key, base_url=effective_base_url)
-    elif provider == "openai":
-        return OpenAIProvider(api_key=api_key, base_url=effective_base_url)
+        if base_url:
+            os.environ["ANTHROPIC_BASE_URL"] = base_url
+        if api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+            # MiniMax uses ANTHROPIC_API_KEY env var via SDK
+            os.environ["ANTHROPIC_API_KEY"] = api_key
+    
+    # Create provider based on type
+    if provider == "anthropic":
+        return AnthropicCompatibleProvider(api_key=api_key, base_url=base_url)
+    
     elif provider == "google":
-        return GoogleProvider(api_key=api_key, base_url=effective_base_url)
+        return GoogleCompatibleProvider(api_key=api_key)
+    
     else:
         # Default to OpenAI-compatible
-        return OpenAIProvider(api_key=api_key, base_url=effective_base_url)
-
-
-class ProviderFactory:
-    """Factory for creating providers with shared configuration."""
-
-    def __init__(
-        self,
-        default_model: str | None = None,
-        default_provider: str | None = None,
-        default_api_key: str | None = None,
-        default_base_url: str | None = None,
-    ):
-        self.default_model = default_model
-        self.default_provider = default_provider
-        self.default_api_key = default_api_key
-        self.default_base_url = default_base_url
-
-    def create(
-        self,
-        model: str | None = None,
-        provider: str | None = None,
-        api_key: str | None = None,
-        base_url: str | None = None,
-    ) -> BaseProvider:
-        """Create a provider with defaults applied."""
-        return create_provider(
-            model=model or self.default_model,
-            provider=provider or self.default_provider,
-            api_key=api_key or self.default_api_key,
-            base_url=base_url or self.default_base_url,
+        # base_url determines the actual server
+        effective_base_url = base_url or DEFAULT_BASE_URLS.get("openai", "https://api.openai.com/v1")
+        return OpenAICompatibleProvider(
+            base_url=effective_base_url,
+            api_key=api_key,
         )
 
-    async def complete(
-        self,
-        messages: list[Message],
-        model: str | None = None,
-        config: CompletionConfig | None = None,
-        provider: str | None = None,
-        api_key: str | None = None,
-        base_url: str | None = None,
-    ) -> LLMResponse:
-        """Create provider and complete."""
-        p = self.create(model=model, provider=provider, api_key=api_key, base_url=base_url)
-        return await p.complete(messages, model=model or self.default_model or "", config=config)
 
-    async def stream(
-        self,
-        messages: list[Message],
-        model: str | None = None,
-        config: CompletionConfig | None = None,
-        provider: str | None = None,
-        api_key: str | None = None,
-        base_url: str | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        """Create provider and stream."""
-        p = self.create(model=model, provider=provider, api_key=api_key, base_url=base_url)
-        return p.stream(messages, model=model or self.default_model or "", config=config)  # type: ignore[return-value]
+__all__ = [
+    "create_provider",
+    "OpenAICompatibleProvider",
+    "AnthropicCompatibleProvider",
+    "GoogleCompatibleProvider",
+]
